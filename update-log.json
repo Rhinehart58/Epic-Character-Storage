@@ -1,0 +1,17 @@
+{
+  "updatedAt": "2026-05-06T00:00:00.000Z",
+  "entries": [
+    {
+      "id": "ecs-2026-05-06-ui",
+      "date": "2026-05-06",
+      "title": "Login screen & settings polish",
+      "details": "Update log on sign-in with periodic refresh; settings menu uses a top-layer overlay so it stays visible."
+    },
+    {
+      "id": "ecs-phase4",
+      "date": "2026-04",
+      "title": "Auth & campaign workspace",
+      "details": "Login-first flow, sessions, campaigns, encounter board, and DnD sheet mode."
+    }
+  ]
+}

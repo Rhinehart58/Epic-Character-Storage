@@ -1,0 +1,79 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  font-family: Inter, 'DM Sans', system-ui, sans-serif;
+}
+
+::selection {
+  background: rgba(139, 92, 246, 0.35);
+}
+
+/* Abstract layout primitives (original styling — not tied to any third-party sheet product) */
+.ecs-shape-card {
+  clip-path: polygon(0 14px, 14px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%);
+}
+
+.ecs-shape-soft {
+  border-radius: 0.75rem 2rem 0.75rem 1.25rem;
+}
+
+.ecs-shape-banner {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 24px), 92% 100%, 0 100%);
+}
+
+.ecs-portrait-hex {
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+}
+
+.ecs-diagonal-strip {
+  background: linear-gradient(
+    115deg,
+    transparent 0%,
+    rgba(139, 92, 246, 0.08) 35%,
+    rgba(56, 189, 248, 0.06) 55%,
+    transparent 70%
+  );
+}
+
+.dark .ecs-diagonal-strip {
+  background: linear-gradient(
+    115deg,
+    transparent 0%,
+    rgba(139, 92, 246, 0.12) 35%,
+    rgba(56, 189, 248, 0.1) 55%,
+    transparent 70%
+  );
+}
+
+.ecs-stat-wedge {
+  clip-path: polygon(8% 0, 100% 0, 100% 100%, 0 100%, 0 24%);
+}
+
+.ecs-grid-wash {
+  background-image:
+    linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
+  background-size: 26px 26px;
+  mask-image: radial-gradient(circle at 50% 25%, black, transparent 75%);
+}
+
+/* Respect OS reduced-motion */
+@media (prefers-reduced-motion: reduce) {
+  .ecs-grid-wash {
+    animation: none;
+  }
+}
+
+@layer utilities {
+  .ecs-interactive {
+    @apply transition-colors duration-150 ease-out;
+  }
+
+  .ecs-interactive-strong {
+    @apply transition-all duration-200 ease-out;
+  }
+}
