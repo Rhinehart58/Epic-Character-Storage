@@ -1,0 +1,40 @@
+---
+description: Always append an update-log.json entry whenever code/feature changes ship in this project.
+alwaysApply: true
+---
+
+# Always update `update-log.json`
+
+Whenever you make a user-visible change to this app (new feature, theme work, layout change, removed setting, IPC/auth change, polish pass, bug fix the user will notice, etc.), you MUST add an entry to `update-log.json` in the repo root in the same turn as the change.
+
+## How to add an entry
+
+1. Set `updatedAt` at the top of the file to the current ISO timestamp (UTC).
+2. Prepend a new object to the front of the `entries` array — newest first.
+3. Use this shape:
+
+```json
+{
+  "id": "ecs-YYYY-MM-DD-short-slug",
+  "date": "YYYY-MM-DD",
+  "title": "Short user-facing summary (≤ 60 chars)",
+  "details": "1–3 sentences describing what changed and why a player/DM should care."
+}
+```
+
+- `id` must be globally unique. Prefix with `ecs-`, then date, then a kebab-case slug of the change.
+- `date` is the day the change shipped (UTC).
+- `title` is what shows on the login screen update log — keep it punchy.
+- `details` should describe the *user-visible* effect, not the internal refactor. Mention the setting/menu/screen the user touches.
+
+## When to combine vs. split entries
+
+- One coherent feature ships in one entry, even if it touches many files (e.g., "Default theme + layout toggle + tooltips" in a single line).
+- Unrelated changes shipped together get separate entries.
+- Pure internal refactors with no user impact do not need an entry.
+
+## Don't forget
+
+- The login screen pulls live notes from GitHub (`update-feed.config.json`). The bundled `update-log.json` is the offline fallback. Always update the file in the repo so both paths stay in sync after the user's next push.
+- After editing `update-log.json`, do NOT need to run a build just for this — but if you're already building for the code change, keep going as normal.
+- Never silently delete or rewrite past entries; only append new ones.

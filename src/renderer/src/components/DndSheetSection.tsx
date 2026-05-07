@@ -2,6 +2,26 @@ import type { Dispatch, JSX, SetStateAction } from 'react'
 import type { CharacterSaveInput } from '@shared/character-types'
 import { cn } from '../lib/utils'
 
+export type ManualAttackDraft = {
+  name: string
+  hitBonus: string
+  damageDice: string
+  damageType: string
+  range: string
+  description: string
+}
+
+export function emptyManualAttackDraft(): ManualAttackDraft {
+  return {
+    name: '',
+    hitBonus: '0',
+    damageDice: '1d8',
+    damageType: 'slashing',
+    range: 'Melee 5 ft',
+    description: ''
+  }
+}
+
 type ColorSchemePack = {
   primary: string
   secondary: string
@@ -71,6 +91,7 @@ type Props = {
   keywordText: string
   setKeywordText: (value: string) => void
   onGenerateAttacks: () => void
+  onRemoveAttack: (attackId: string) => void
   onPickPortrait: () => void
   onClearPortrait: () => void
   dndClass: string
@@ -80,6 +101,11 @@ type Props = {
   dndCastingAbility: keyof CharacterSaveInput['stats']
   showAdvancedCharacterFields: boolean
   setShowAdvancedCharacterFields: Dispatch<SetStateAction<boolean>>
+  manualAttackDraft: ManualAttackDraft
+  setManualAttackDraft: Dispatch<SetStateAction<ManualAttackDraft>>
+  onAddManualAttack: () => void
+  /** Live summary from `previewKeywordAttackBatch` (keywords → attack count / elements). */
+  keywordIntelLines?: string[]
 }
 
 export function DndSheetSection(props: Props): JSX.Element {
@@ -91,6 +117,10 @@ export function DndSheetSection(props: Props): JSX.Element {
     keywordText,
     setKeywordText,
     onGenerateAttacks,
+    onRemoveAttack,
+    onAddManualAttack,
+    manualAttackDraft,
+    setManualAttackDraft,
     onPickPortrait,
     onClearPortrait,
     dndClass,
@@ -99,11 +129,12 @@ export function DndSheetSection(props: Props): JSX.Element {
     dndSpellSaveDc,
     dndCastingAbility,
     showAdvancedCharacterFields,
-    setShowAdvancedCharacterFields
+    setShowAdvancedCharacterFields,
+    keywordIntelLines = []
   } = props
 
   return (
-    <section className={cn('relative overflow-hidden rounded-2xl p-5 shadow-sm motion-safe:animate-ecs-fade-up', cardClass)}>
+    <section className={cn('relative overflow-x-clip overflow-y-visible rounded-2xl p-5 shadow-sm motion-safe:animate-ecs-fade-up', cardClass)}>
       <div className="ecs-diagonal-strip pointer-events-none absolute inset-0 opacity-[0.65]" />
       <div className="relative space-y-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -342,15 +373,104 @@ export function DndSheetSection(props: Props): JSX.Element {
               >
                 Generate from keywords
               </button>
-              <ul className="mt-2 max-h-44 space-y-2 overflow-y-auto pr-1">
+              {keywordIntelLines.length > 0 ? (
+                <ul
+                  className="mt-2 space-y-0.5 rounded-lg border border-slate-200/90 bg-slate-50/80 px-2.5 py-2 text-[11px] leading-snug text-slate-600 dark:border-slate-600/80 dark:bg-slate-900/40 dark:text-slate-300"
+                  aria-live="polite"
+                >
+                  {keywordIntelLines.map((line, idx) => (
+                    <li key={`${idx}-${line}`}>{line}</li>
+                  ))}
+                </ul>
+              ) : null}
+              <div className="mt-3 space-y-2 rounded-lg border border-dashed border-slate-300/80 p-2 dark:border-slate-600/80">
+                <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Add attack manually
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <input
+                    value={manualAttackDraft.name}
+                    onChange={(event) => setManualAttackDraft((d) => ({ ...d, name: event.target.value }))}
+                    placeholder="Attack name"
+                    className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
+                  />
+                  <input
+                    value={manualAttackDraft.hitBonus}
+                    onChange={(event) => setManualAttackDraft((d) => ({ ...d, hitBonus: event.target.value }))}
+                    placeholder="Hit +"
+                    className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
+                  />
+                  <input
+                    value={manualAttackDraft.damageDice}
+                    onChange={(event) => setManualAttackDraft((d) => ({ ...d, damageDice: event.target.value }))}
+                    placeholder="e.g. 1d8+3"
+                    className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
+                  />
+                  <input
+                    value={manualAttackDraft.damageType}
+                    onChange={(event) => setManualAttackDraft((d) => ({ ...d, damageType: event.target.value }))}
+                    placeholder="Damage type"
+                    className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
+                  />
+                  <input
+                    value={manualAttackDraft.range}
+                    onChange={(event) => setManualAttackDraft((d) => ({ ...d, range: event.target.value }))}
+                    placeholder="Range"
+                    className="sm:col-span-2 w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
+                  />
+                  <input
+                    value={manualAttackDraft.description}
+                    onChange={(event) => setManualAttackDraft((d) => ({ ...d, description: event.target.value }))}
+                    placeholder="Short description (optional)"
+                    className="sm:col-span-2 w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onAddManualAttack()}
+                  className="w-full rounded-lg border border-slate-400 px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-500 dark:text-slate-200 dark:hover:bg-slate-800/60"
+                >
+                  Add to list
+                </button>
+              </div>
+              <ul className="mt-2 max-h-72 space-y-2 overflow-y-auto pr-1">
                 {editor.attacks.map((attack) => (
                   <li
                     key={attack.id}
                     className="ecs-shape-soft border border-slate-200 p-2 text-xs dark:border-slate-700"
                   >
-                    <div className="font-semibold">{attack.name}</div>
-                    <div className="text-slate-500 dark:text-slate-400">
-                      {attack.damageDice} {attack.damageType} | +{attack.hitBonus} | {attack.range}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1 font-semibold">
+                          <span>{attack.name}</span>
+                          {attack.source === 'generated' ? (
+                            <span className="rounded bg-amber-200/70 px-1 py-0 text-[9px] font-bold uppercase tracking-wide text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
+                              Gen
+                            </span>
+                          ) : attack.source === 'manual' ? (
+                            <span className="rounded bg-sky-200/70 px-1 py-0 text-[9px] font-bold uppercase tracking-wide text-sky-900 dark:bg-sky-500/20 dark:text-sky-100">
+                              Manual
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="text-slate-500 dark:text-slate-400">
+                          {attack.damageDice} {attack.damageType} | +{attack.hitBonus} | {attack.range}
+                        </div>
+                        {attack.description ? (
+                          <div className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">
+                            {attack.description}
+                          </div>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => onRemoveAttack(attack.id)}
+                        title="Remove this attack"
+                        aria-label={`Remove ${attack.name}`}
+                        className="shrink-0 rounded border border-rose-300 px-1.5 py-0.5 text-[10px] font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                      >
+                        ×
+                      </button>
                     </div>
                   </li>
                 ))}

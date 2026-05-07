@@ -122,6 +122,33 @@ export type CampaignBattleState = {
   updatedByAccountId: string
 }
 
+/** Emitted with `sync:changed` so the UI can show who changed what (same machine / all windows). */
+export type SyncActivityKind =
+  | 'character_created'
+  | 'character_updated'
+  | 'character_deleted'
+  | 'battle_updated'
+  | 'campaign_created'
+  | 'campaign_joined'
+  | 'campaign_left'
+
+export type SyncActivityPayload = {
+  kind: SyncActivityKind
+  at: number
+  actorAccountId: string | null
+  actorDisplayName: string
+  campaignId: string | null
+  /** Third-person sentence, e.g. `updated the encounter board (round 2).` — lead with a verb phrase after the actor label. */
+  summary: string
+}
+
+export type SyncChangedBroadcast = {
+  scope: 'characters' | 'campaigns' | 'battle'
+  campaignId: string | null
+  at: number
+  activity?: SyncActivityPayload
+}
+
 export function createDefaultStats(): CharacterStats {
   return {
     str: 10,

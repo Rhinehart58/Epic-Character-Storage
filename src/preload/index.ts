@@ -10,6 +10,7 @@ import type {
   PasswordResetRequestResult,
   SimpleResult,
   SmtpStatusResult,
+  SyncChangedBroadcast,
   UserAccount
 } from '../shared/character-types'
 
@@ -26,6 +27,7 @@ const characterApi = {
     level: number
     keywords: string[]
     stats: CharacterSaveInput['stats']
+    batchId?: string
   }): Promise<GeneratedAttackResult> => ipcRenderer.invoke('attacks:generate', payload)
 }
 
@@ -89,10 +91,8 @@ const battleApi = {
 }
 
 const syncApi = {
-  onChanged: (
-    callback: (payload: { scope: 'characters' | 'campaigns' | 'battle'; campaignId: string | null; at: number }) => void
-  ): (() => void) => {
-    const listener = (_event: unknown, payload: any): void => callback(payload)
+  onChanged: (callback: (payload: SyncChangedBroadcast) => void): (() => void) => {
+    const listener = (_event: unknown, payload: SyncChangedBroadcast): void => callback(payload)
     ipcRenderer.on('sync:changed', listener)
     return () => ipcRenderer.removeListener('sync:changed', listener)
   }

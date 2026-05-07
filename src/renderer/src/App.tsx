@@ -1,17 +1,69 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { JSX, ReactNode } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { Dispatch, JSX, ReactNode, SetStateAction } from 'react'
 import { createPortal } from 'react-dom'
-import type { CampaignRecord, CharacterRecord, CharacterSaveInput } from '@shared/character-types'
+import type {
+  CampaignRecord,
+  CharacterRecord,
+  CharacterSaveInput,
+  SyncActivityPayload
+} from '@shared/character-types'
 import { createDefaultStats } from '@shared/character-types'
+import { normalizeKeywordInput, previewKeywordAttackBatch, starterKeywordsForDndArchetype } from '@shared/attack-generator'
 import { cn } from './lib/utils'
-import { DndSheetSection, ecsPortraitSrc } from './components/DndSheetSection'
+import { playUiButtonChime, type ChimeColorScheme } from './lib/theme-chime'
+import {
+  BEE_THEME_SECRET_NORMALIZED,
+  normalizeSecretInput,
+  persistBeeThemeUnlocked,
+  readBeeThemeUnlocked
+} from './lib/secret-unlocks'
+import {
+  deleteUiPreset,
+  loadUiPresets,
+  newPresetId,
+  normalizeWorkspaceFlow,
+  themedWorkspaceFlowDefault,
+  parseChromeWeight,
+  parseCornerStyle,
+  parseSidebarPlacement,
+  parseSidebarWidth,
+  parseWorkspaceDensity,
+  upsertUiPreset,
+  type ChromeWeight,
+  type CornerStyle,
+  type SidebarPlacement,
+  type SidebarWidthPreset,
+  type UiLayoutPreset,
+  type WorkspaceDensity,
+  type WorkspaceFlowRegion
+} from './lib/ui-presets'
+import { DndSheetSection, ecsPortraitSrc, emptyManualAttackDraft, type ManualAttackDraft } from './components/DndSheetSection'
 import { LoginUpdateLog } from './components/LoginUpdateLog'
+import { backend } from './lib/backend'
+import {
+  clearUiCopyOverrides,
+  UI_COPY_DEFAULTS,
+  loadUiCopyOverrides,
+  persistUiCopyOverrides,
+  resolveUiCopy,
+  type UiCopyKey,
+  type UiCopyOverrides
+} from './lib/ui-copy'
+
+type ActivityFeedEntry = SyncActivityPayload & { entryId: string }
+
+function formatLocalActivityTime(atMs: number): string {
+  return new Date(atMs).toLocaleTimeString(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit'
+  })
+}
 
 type ThemeMode = 'system' | 'light' | 'dark'
-type VisualStyle = 'clean' | 'parchment'
 type AuthMode = 'login' | 'register' | 'dev' | 'reset'
-type WorkspaceTab = 'sheet' | 'battle'
-type ColorScheme = 'default' | 'violet' | 'teal' | 'sunset' | 'wii' | 'xmb' | 'cube' | 'wiiu' | '3ds'
+type WorkspaceTab = 'home' | 'sheet' | 'battle'
+type ColorScheme = 'default' | 'violet' | 'teal' | 'sunset' | 'wii' | 'ps3' | 'xbox360' | 'cube' | 'wiiu' | '3ds' | 'bee'
 type QuickPreset = 'frontliner' | 'caster' | 'rogue'
 type RulesMode = 'ttrpg' | 'dnd'
 type EditableCharacter = Omit<CharacterSaveInput, 'ownerAccountId' | 'campaignId'>
@@ -22,6 +74,190 @@ type BattleDraft = {
   notes: string
   conditions: string[]
   selectedAction: string
+}
+
+const GUEST_APPEARANCE_KEY = 'ecs-appearance-guest-v1'
+
+/** Human-readable names for vertical stack regions (layout editor + screen readers). */
+function ecsWorkspaceRegionLabel(region: WorkspaceFlowRegion): string {
+  if (region === 'header') return 'Title bar'
+  if (region === 'status') return 'Status strip'
+  return 'Campaign and editor'
+}
+
+/** Full-bleed palette ambience — shared by the signed-in shell and the login route so themes read consistently. */
+function EcsPaletteBackdrop(): JSX.Element {
+  return (
+    <div className="pointer-events-none absolute inset-0 ecs-palette-backdrop" aria-hidden>
+      <div className="ecs-palette-layer ecs-palette-layer--default">
+        <div className="ecs-default-backdrop" />
+      </div>
+      <div className="ecs-palette-layer ecs-palette-layer--violet ecs-aero-scene">
+        <div className="ecs-aero-sky" />
+        <div className="ecs-aero-ribbon motion-safe:animate-ecs-aero-ribbon" />
+        <div className="ecs-aero-specular motion-safe:animate-ecs-aero-ribbon" style={{ animationDelay: '-4s' }} />
+        <div className="ecs-aero-orb ecs-aero-orb--a motion-safe:animate-ecs-aero-float" style={{ animationDelay: '-5s' }} />
+        <div className="ecs-aero-orb ecs-aero-orb--b motion-safe:animate-ecs-aero-float" style={{ animationDelay: '-11s' }} />
+        <div className="ecs-aero-orb ecs-aero-orb--c motion-safe:animate-ecs-aero-float" style={{ animationDelay: '-17s' }} />
+        <div className="absolute inset-0 ecs-grid-wash opacity-80" />
+        <div className="ecs-aero-vignette" />
+      </div>
+      <div className="ecs-palette-layer ecs-palette-layer--teal">
+        <div className="ecs-win98-wallpaper" />
+        <div className="ecs-win98-pixel-grid" />
+      </div>
+      <div className="ecs-palette-layer ecs-palette-layer--sunset">
+        <div className="ecs-y2k-space" />
+        <div className="ecs-y2k-glow-ribbon motion-safe:animate-ecs-aero-ribbon" />
+        <div className="ecs-y2k-grid-floor" />
+      </div>
+      <div className="ecs-palette-layer ecs-palette-layer--wii ecs-wii-scene">
+        <div className="ecs-wii-backdrop" />
+        <div className="ecs-wii-channel-grid" />
+        <div className="ecs-wii-pane-matrix" />
+        <div className="ecs-wii-focus-dot motion-safe:animate-ecs-pulse-soft" />
+        <div
+          className="ecs-wii-shine-bubble left-[8%] top-[22%] h-[min(52vmin,380px)] w-[min(52vmin,380px)] motion-safe:animate-ecs-wii-drift"
+          aria-hidden
+        />
+        <div
+          className="ecs-wii-shine-bubble bottom-[12%] right-[6%] h-[min(40vmin,300px)] w-[min(56vmin,400px)] opacity-35 motion-safe:animate-ecs-wii-drift"
+          style={{ animationDelay: '-9s' }}
+          aria-hidden
+        />
+      </div>
+      <div className="ecs-palette-layer ecs-palette-layer--ps3 ecs-xmb-scene">
+        <div className="ecs-xmb-backdrop" />
+        <div className="ecs-xmb-wave-layer motion-safe:animate-ecs-xmb-wave" />
+        <div className="ecs-xmb-wave-layer ecs-xmb-wave-layer--secondary motion-safe:animate-ecs-xmb-wave" />
+        <div className="ecs-xmb-column-guides" />
+        <div className="ecs-xmb-spark-grid" />
+      </div>
+      <div className="ecs-palette-layer ecs-palette-layer--xbox360 ecs-nxe-scene">
+        <div className="ecs-nxe-backdrop" />
+        <div className="ecs-nxe-blade-sweep motion-safe:animate-ecs-nxe-drift" />
+        <div className="ecs-nxe-ring-glow" />
+        <div className="ecs-nxe-horizontal-lines" />
+      </div>
+      <div className="ecs-palette-layer ecs-palette-layer--cube ecs-cube-scene">
+        <div className="ecs-cube-backdrop" />
+        <div className="ecs-cube-facet-grid" />
+        <div className="ecs-cube-ghost-cube ecs-cube-ghost-cube--a motion-safe:animate-ecs-cube-drift" />
+        <div
+          className="ecs-cube-ghost-cube ecs-cube-ghost-cube--b motion-safe:animate-ecs-cube-drift"
+          style={{ animationDelay: '-8s' }}
+        />
+        <div className="ecs-cube-sphere-glow motion-safe:animate-ecs-aero-float" />
+      </div>
+      <div className="ecs-palette-layer ecs-palette-layer--bee ecs-bee-scene">
+        <div className="ecs-bee-backdrop" />
+        <div className="ecs-bee-comb" />
+        <div className="ecs-bee-nectar-glow motion-safe:animate-ecs-aero-float" />
+      </div>
+      <div className="ecs-palette-layer ecs-palette-layer--wiiu ecs-wiiu-scene">
+        <div className="ecs-wiiu-backdrop" />
+        <div className="ecs-wiiu-tile-grid" />
+      </div>
+      <div className="ecs-palette-layer ecs-palette-layer--3ds ecs-3ds-scene">
+        <div className="ecs-3ds-backdrop" />
+        <div className="ecs-3ds-dot-grid" />
+      </div>
+    </div>
+  )
+}
+
+function accountAppearanceKey(accountId: string): string {
+  return `ecs-appearance-account-${accountId}-v1`
+}
+
+/** Every palette except `bee`, which is gated by a local secret unlock. */
+const PUBLIC_COLOR_SCHEMES: ColorScheme[] = [
+  'default',
+  'violet',
+  'teal',
+  'sunset',
+  'wii',
+  'ps3',
+  'xbox360',
+  'cube',
+  'wiiu',
+  '3ds'
+]
+
+function parseColorScheme(value: unknown): ColorScheme {
+  if (typeof value !== 'string') return 'default'
+  if (value === 'bionicle') return 'default'
+  if (value === 'xmb') return 'ps3'
+  if (value === 'bee') return readBeeThemeUnlocked() ? 'bee' : 'default'
+  return (PUBLIC_COLOR_SCHEMES as readonly string[]).includes(value) ? (value as ColorScheme) : 'default'
+}
+
+function isPs3OrXbox360(cs: ColorScheme): boolean {
+  return cs === 'ps3' || cs === 'xbox360'
+}
+
+type StoredAppearanceV1 = {
+  colorScheme?: string
+  themeMode?: string
+  useThemeLayout?: boolean
+  /** @deprecated migrated to `cornerStyle` */
+  useSoftCorners?: boolean
+  cornerStyle?: string
+  chromeWeight?: string
+  sidebarPlacement?: string
+  sidebarWidth?: string
+  workspaceDensity?: string
+  workspaceFlow?: string[]
+  /** When false, `workspaceFlow` follows palette-themed defaults when switching schemes. */
+  regionFlowCustom?: boolean
+  activeUiPresetId?: string | null
+  mergeGeneratedAttacks?: boolean
+  persistThemePerAccount?: boolean
+  uiSoundsEnabled?: boolean
+}
+
+function readStoredAppearance(key: string): StoredAppearanceV1 | null {
+  try {
+    const raw = window.localStorage.getItem(key)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as unknown
+    return typeof parsed === 'object' && parsed !== null ? (parsed as StoredAppearanceV1) : null
+  } catch {
+    return null
+  }
+}
+
+function parseThemeMode(value: unknown): ThemeMode | null {
+  if (value === 'system' || value === 'light' || value === 'dark') return value
+  return null
+}
+
+/** Header Theme menu rows (excludes secret `bee`; appended at runtime when unlocked). */
+const THEME_SCHEME_CHOICES_BASE: { id: ColorScheme; title: string; blurb: string }[] = [
+  { id: 'default', title: 'Default', blurb: 'Plain light/dark chrome' },
+  { id: 'violet', title: 'Aero meadow', blurb: 'Vista/7 glass: cool sky, soft grass haze, no neon' },
+  { id: 'teal', title: 'Classic chrome', blurb: 'Gray bevels, teal desktop' },
+  { id: 'sunset', title: 'Y2K neon', blurb: 'Hot magenta and cyan — MySpace-era loud, not Aero' },
+  { id: 'wii', title: 'Wii', blurb: 'Silver bar, soft channel grid' },
+  { id: 'ps3', title: 'PS3 (XMB)', blurb: 'Cross Media Bar: black field, vertical guides, silver-blue wave' },
+  {
+    id: 'xbox360',
+    title: 'Xbox 360 (NXE)',
+    blurb: 'New Xbox Experience: charcoal blades, Xbox green glow, horizontal sweep'
+  },
+  {
+    id: 'cube',
+    title: 'GameCube',
+    blurb: 'BIOS-era indigo glass, silver highlights, warm orange sphere glow (not retail purple)'
+  },
+  { id: 'wiiu', title: 'Wii U', blurb: 'Flat cyan tiles' },
+  { id: '3ds', title: '3DS', blurb: 'Candy red, tight corners' }
+]
+
+const BEE_THEME_CHOICE: { id: ColorScheme; title: string; blurb: string } = {
+  id: 'bee',
+  title: 'Honey bee',
+  blurb: 'Amber hive chrome and honeycomb field — unlock from Settings → Secret codes.'
 }
 
 const SESSION_TIMEOUT_MS = 20 * 60 * 1000
@@ -88,6 +324,61 @@ const DND_CLASS_BASELINE: Record<string, { hp: number; ac: number }> = {
   Wizard: { hp: 8, ac: 12 }
 }
 
+const DND_CLASS_BLURB: Record<(typeof DND_CLASSES)[number], string> = {
+  Barbarian: 'Rage-fueled tank with brutal melee and massive HP',
+  Bard: 'Magical performer who buffs allies and casts versatile spells',
+  Cleric: 'Divine healer and front-line support',
+  Druid: 'Nature shapeshifter and elemental caster',
+  Fighter: 'Versatile martial — strong, durable, easy to play',
+  Monk: 'Unarmed striker with superhuman speed and reflexes',
+  Paladin: 'Holy warrior with smites, healing, and heavy armor',
+  Ranger: 'Wilderness hunter with bows, beasts, and tracking',
+  Rogue: 'Stealthy precision damage and skill mastery',
+  Sorcerer: 'Innate magic — spontaneous and metamagic flair',
+  Warlock: 'Patron-bound caster with potent invocations',
+  Wizard: 'Studied scholar with the broadest spell list'
+}
+
+type TTRPGPresetEntry = {
+  label: string
+  blurb: string
+  archetype: string
+  factionGroup: string
+  dedicatedEssence: string
+  hp: number
+  ac: number
+}
+
+const TTRPG_PRESETS: Record<QuickPreset, TTRPGPresetEntry> = {
+  frontliner: {
+    label: 'Frontliner',
+    blurb: 'Heavy armor, melee, takes the hits',
+    archetype: 'Frontliner',
+    factionGroup: 'Vanguard',
+    dedicatedEssence: 'Steel Discipline',
+    hp: 32,
+    ac: 14
+  },
+  caster: {
+    label: 'Caster',
+    blurb: 'Spells from a distance, fragile but powerful',
+    archetype: 'Caster',
+    factionGroup: 'Arc Circle',
+    dedicatedEssence: 'Aether',
+    hp: 18,
+    ac: 8
+  },
+  rogue: {
+    label: 'Skirmisher',
+    blurb: 'Stealth, mobility, precision strikes',
+    archetype: 'Rogue',
+    factionGroup: 'Night Guild',
+    dedicatedEssence: 'Shadowstep',
+    hp: 22,
+    ac: 10
+  }
+}
+
 function proficiencyBonus(level: number): number {
   if (level >= 17) return 6
   if (level >= 13) return 5
@@ -125,11 +416,7 @@ function emptyCharacter(): EditableCharacter {
 }
 
 function parseKeywords(value: string): string[] {
-  return value
-    .split(',')
-    .map((item) => item.trim().toLowerCase())
-    .filter(Boolean)
-    .filter((item, idx, arr) => arr.indexOf(item) === idx)
+  return normalizeKeywordInput(value)
 }
 
 function formatSheet(ch: EditableCharacter): string {
@@ -165,6 +452,7 @@ function ecsAuthControlRound(cs: ColorScheme): string {
   if (cs === 'wii') return 'rounded-2xl'
   if (cs === 'wiiu') return 'rounded-xl'
   if (cs === '3ds') return 'rounded-md'
+  if (cs === 'bee') return 'rounded-2xl'
   if (cs === 'default') return 'rounded-lg'
   return 'rounded-lg'
 }
@@ -174,6 +462,7 @@ function ecsWideControlRound(cs: ColorScheme): string {
   if (cs === 'wii') return 'rounded-2xl'
   if (cs === 'wiiu') return 'rounded-xl'
   if (cs === '3ds') return 'rounded-md'
+  if (cs === 'bee') return 'rounded-2xl'
   if (cs === 'default') return 'rounded-lg'
   return 'rounded-xl'
 }
@@ -183,34 +472,1026 @@ function ecsCharacterRowRound(cs: ColorScheme): string {
   if (cs === 'wii') return 'rounded-2xl'
   if (cs === 'wiiu') return 'rounded-xl'
   if (cs === '3ds') return 'rounded-md'
+  if (cs === 'bee') return 'rounded-2xl'
   if (cs === 'default') return 'rounded-lg'
   return 'rounded-lg'
 }
 
-function SettingsLabel({ children, hint }: { children: ReactNode; hint: string }): JSX.Element {
+function SettingsField(props: {
+  label: string
+  hint: string
+  htmlFor?: string
+  children: ReactNode
+}): JSX.Element {
+  const { label, hint, htmlFor, children } = props
   return (
-    <span className="ecs-tooltip-label inline-flex items-center gap-1.5">
-      {children}
-      <span
-        className="ecs-tooltip-trigger relative inline-flex h-4 w-4 cursor-help select-none items-center justify-center rounded-full border border-slate-400/80 bg-slate-100 text-[9px] font-bold leading-none text-slate-600 dark:border-slate-500 dark:bg-slate-800 dark:text-slate-300"
-        tabIndex={0}
-        role="img"
-        aria-label={hint}
+    <div className="ecs-settings-field mt-3 first:mt-0">
+      <label
+        htmlFor={htmlFor}
+        className="block text-[11px] font-semibold uppercase tracking-wide text-slate-700 dark:text-slate-200"
       >
-        ?
-        <span className="ecs-tooltip-bubble" role="tooltip">
-          {hint}
-        </span>
-      </span>
-    </span>
+        {label}
+      </label>
+      {children}
+      <p className="mt-1 text-[11px] leading-snug text-slate-500 dark:text-slate-400">{hint}</p>
+    </div>
+  )
+}
+
+function SettingsSection(props: { title: string; children: ReactNode }): JSX.Element {
+  return (
+    <section className="ecs-settings-section mt-4 first:mt-0 border-t border-slate-200/60 pt-3 first:border-t-0 first:pt-0 dark:border-slate-700/60">
+      <h3 className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+        {props.title}
+      </h3>
+      <div className="mt-2 space-y-3">{props.children}</div>
+    </section>
+  )
+}
+
+/**
+ * Six Toa-flavored sample characters for the dev "Seed sample data" button.
+ * Tahu, Gali, Lewa, Onua, Kopaka, Pohatu — same elemental colors used to test
+ * faction grouping, attack generation, and the battle board at once.
+ */
+const DEV_SEED_CHARACTERS: { name: string; faction: string; archetype: string; keywords: string[]; hp: number; ac: number }[] = [
+  { name: 'Tahu', faction: 'Toa Mata', archetype: 'fire warrior', keywords: ['fire', 'blade'], hp: 32, ac: 16 },
+  { name: 'Gali', faction: 'Toa Mata', archetype: 'water sage', keywords: ['ice', 'arcane'], hp: 26, ac: 14 },
+  { name: 'Lewa', faction: 'Toa Mata', archetype: 'air scout', keywords: ['lightning', 'pierce'], hp: 24, ac: 15 },
+  { name: 'Onua', faction: 'Toa Mata', archetype: 'earth guardian', keywords: ['crush', 'shadow'], hp: 38, ac: 17 },
+  { name: 'Kopaka', faction: 'Toa Mata', archetype: 'ice tactician', keywords: ['ice', 'pierce'], hp: 28, ac: 16 },
+  { name: 'Pohatu', faction: 'Toa Mata', archetype: 'stone bruiser', keywords: ['crush', 'thunder'], hp: 34, ac: 16 }
+]
+
+/** Repo-relative paths for the Workshop — copy and paste into your editor / IDE quick-open. */
+const DEV_FILE_SHORTCUTS: { label: string; path: string; note: string }[] = [
+  { label: 'Global CSS & motion', path: 'src/renderer/src/index.css', note: 'Palette hooks, density, clip-paths' },
+  { label: 'Main shell + Workshop', path: 'src/renderer/src/App.tsx', note: 'Auth, workspace grid, battle, dev UI' },
+  { label: 'DnD sheet block', path: 'src/renderer/src/components/DndSheetSection.tsx', note: 'Keywords, attacks, stats grid' },
+  { label: 'Shared character types', path: 'src/shared/character-types.ts', note: 'Saved fields & battle payloads' },
+  { label: 'Attack generator', path: 'src/shared/attack-generator.ts', note: 'Keyword → attack math' },
+  { label: 'Electron main IPC', path: 'src/main/index.ts', note: 'Persistence + sync broadcast' },
+  { label: 'Preload bridge', path: 'src/preload/index.ts', note: 'Exposes APIs to the renderer' },
+  { label: 'Backend switch', path: 'src/renderer/src/lib/backend.ts', note: 'IPC vs future HTTP' }
+]
+
+type DevPanelTab = 'workbench' | 'overview' | 'state' | 'storage' | 'theme' | 'data' | 'strings'
+
+function DevToolsPanel(props: {
+  onClose: () => void
+  activeTab: DevPanelTab
+  setActiveTab: (tab: DevPanelTab) => void
+  colorScheme: ColorScheme
+  setColorScheme: (next: ColorScheme) => void
+  themeMode: ThemeMode
+  setThemeMode: (next: ThemeMode) => void
+  useThemeLayout: boolean
+  setUseThemeLayout: (next: boolean) => void
+  mergeGeneratedAttacks: boolean
+  persistThemePerAccount: boolean
+  uiSoundsEnabled: boolean
+  beeThemeUnlocked: boolean
+  rulesMode: RulesMode
+  setRulesMode: (next: RulesMode) => void
+  cornerStyle: CornerStyle
+  chromeWeight: ChromeWeight
+  sidebarPlacement: SidebarPlacement
+  sidebarWidth: SidebarWidthPreset
+  workspaceDensity: WorkspaceDensity
+  workspaceFlow: WorkspaceFlowRegion[]
+  regionFlowCustom: boolean
+  activeUiPresetId: string | null
+  layoutEditMode: boolean
+  activeAccountId: string | null
+  characters: CharacterRecord[]
+  campaigns: CampaignRecord[]
+  campaignMembers: { id: string; displayName: string; email: string }[]
+  workspaceTab: WorkspaceTab
+  selectedCampaignId: string | null
+  editor: EditableCharacter
+  battleParticipants: string[]
+  battleDrafts: Record<string, BattleDraft>
+  encounterRound: number
+  setAppMessage: (msg: string | null) => void
+  reloadCharacters: () => Promise<void>
+  guidedSetup: boolean
+  setGuidedSetup: (next: boolean) => void
+  setLayoutEditMode: Dispatch<SetStateAction<boolean>>
+  setShowThemeMenu: Dispatch<SetStateAction<boolean>>
+  setShowSettingsMenu: Dispatch<SetStateAction<boolean>>
+  setWorkspaceTab: (next: WorkspaceTab) => void
+  compactCreator: boolean
+  setCompactCreator: Dispatch<SetStateAction<boolean>>
+  compactBattle: boolean
+  setCompactBattle: Dispatch<SetStateAction<boolean>>
+  setMergeGeneratedAttacks: Dispatch<SetStateAction<boolean>>
+  setCornerStyle: (next: CornerStyle) => void
+  setChromeWeight: (next: ChromeWeight) => void
+  setWorkspaceDensity: (next: WorkspaceDensity) => void
+  setSidebarPlacement: (next: SidebarPlacement) => void
+  setSidebarWidth: (next: SidebarWidthPreset) => void
+  setUiSoundsEnabled: Dispatch<SetStateAction<boolean>>
+  setPersistThemePerAccount: Dispatch<SetStateAction<boolean>>
+  setActiveUiPresetId: Dispatch<SetStateAction<string | null>>
+  open: boolean
+  children: ReactNode
+  uiCopyOverrides: UiCopyOverrides
+  setUiCopyOverrides: Dispatch<SetStateAction<UiCopyOverrides>>
+}): JSX.Element {
+  const {
+    onClose,
+    activeTab,
+    setActiveTab,
+    colorScheme,
+    setColorScheme,
+    themeMode,
+    setThemeMode,
+    useThemeLayout,
+    setUseThemeLayout,
+    mergeGeneratedAttacks,
+    persistThemePerAccount,
+    uiSoundsEnabled,
+    beeThemeUnlocked,
+    rulesMode,
+    setRulesMode,
+    cornerStyle,
+    chromeWeight,
+    sidebarPlacement,
+    sidebarWidth,
+    workspaceDensity,
+    workspaceFlow,
+    regionFlowCustom,
+    activeUiPresetId,
+    layoutEditMode,
+    activeAccountId,
+    characters,
+    campaigns,
+    campaignMembers,
+    workspaceTab,
+    selectedCampaignId,
+    editor,
+    battleParticipants,
+    battleDrafts,
+    encounterRound,
+    setAppMessage,
+    reloadCharacters,
+    guidedSetup,
+    setGuidedSetup,
+    setLayoutEditMode,
+    setShowThemeMenu,
+    setShowSettingsMenu,
+    setWorkspaceTab,
+    compactCreator,
+    setCompactCreator,
+    compactBattle,
+    setCompactBattle,
+    setMergeGeneratedAttacks,
+    setCornerStyle,
+    setChromeWeight,
+    setWorkspaceDensity,
+    setSidebarPlacement,
+    setSidebarWidth,
+    setUiSoundsEnabled,
+    setPersistThemePerAccount,
+    setActiveUiPresetId,
+    open,
+    children,
+    uiCopyOverrides,
+    setUiCopyOverrides
+  } = props
+
+  const [storageKeys, setStorageKeys] = useState<{ key: string; value: string }[]>([])
+  const [seedBusy, setSeedBusy] = useState(false)
+
+  useEffect(() => {
+    if (activeTab !== 'storage') return
+    const collected: { key: string; value: string }[] = []
+    for (let i = 0; i < window.localStorage.length; i += 1) {
+      const key = window.localStorage.key(i)
+      if (!key) continue
+      const value = window.localStorage.getItem(key) ?? ''
+      collected.push({ key, value: value.length > 200 ? `${value.slice(0, 200)}…` : value })
+    }
+    setStorageKeys(collected.sort((a, b) => a.key.localeCompare(b.key)))
+  }, [activeTab])
+
+  async function seedSampleCharacters(): Promise<void> {
+    if (!activeAccountId) {
+      setAppMessage('Sign in first to seed characters.')
+      return
+    }
+    setSeedBusy(true)
+    try {
+      for (const tpl of DEV_SEED_CHARACTERS) {
+        const payload: CharacterSaveInput = {
+          ownerAccountId: activeAccountId,
+          campaignId: selectedCampaignId,
+          portraitRelativePath: '',
+          factionGroup: tpl.faction,
+          name: tpl.name,
+          hpCurrent: tpl.hp,
+          hpMax: tpl.hp,
+          armorCurrent: tpl.ac,
+          armorMax: tpl.ac,
+          armorNote: '',
+          dedicatedEssence: 'elemental',
+          dedicatedEssenceDescription: '',
+          traitName: '',
+          traitDescription: '',
+          epicMoveName: '',
+          epicMoveDescription: '',
+          monolithName: '',
+          monolithDescription: '',
+          archetype: tpl.archetype,
+          level: 5,
+          notes: `Seed sample (dev mode) — ${tpl.archetype}.`,
+          keywords: tpl.keywords,
+          stats: createDefaultStats(),
+          attacks: []
+        }
+        await backend.characterApi.save(payload)
+      }
+      await reloadCharacters()
+      setAppMessage(`Seeded ${DEV_SEED_CHARACTERS.length} sample characters.`)
+    } catch (err) {
+      setAppMessage(`Seed failed: ${(err as Error).message}`)
+    } finally {
+      setSeedBusy(false)
+    }
+  }
+
+  async function deleteAllCharacters(): Promise<void> {
+    if (!window.confirm(`Delete all ${characters.length} of your characters? This cannot be undone.`)) return
+    try {
+      for (const character of characters) {
+        await backend.characterApi.remove(character.id)
+      }
+      await reloadCharacters()
+      setAppMessage('Deleted all characters.')
+    } catch (err) {
+      setAppMessage(`Delete failed: ${(err as Error).message}`)
+    }
+  }
+
+  const stateSnapshot = useMemo(
+    () =>
+      JSON.stringify(
+        {
+          ui: {
+            workspaceTab,
+            colorScheme,
+            useThemeLayout,
+            themeMode,
+            rulesMode,
+            cornerStyle,
+            chromeWeight,
+            sidebarPlacement,
+            sidebarWidth,
+            workspaceDensity,
+            workspaceFlow,
+            regionFlowCustom,
+            activeUiPresetId,
+            layoutEditMode,
+            mergeGeneratedAttacks,
+            persistThemePerAccount,
+            uiSoundsEnabled,
+            beeThemeUnlocked
+          },
+          account: { activeAccountId },
+          counts: {
+            characters: characters.length,
+            campaigns: campaigns.length,
+            campaignMembers: campaignMembers.length
+          },
+          editor: {
+            id: editor.id ?? null,
+            name: editor.name,
+            level: editor.level,
+            hp: `${editor.hpCurrent}/${editor.hpMax}`,
+            ac: `${editor.armorCurrent}/${editor.armorMax}`,
+            keywords: editor.keywords
+          },
+          battle: {
+            campaignId: selectedCampaignId,
+            round: encounterRound,
+            participants: battleParticipants.length,
+            drafts: Object.keys(battleDrafts).length
+          }
+        },
+        null,
+        2
+      ),
+    [
+      workspaceTab,
+      colorScheme,
+      useThemeLayout,
+      themeMode,
+      rulesMode,
+      cornerStyle,
+      chromeWeight,
+      sidebarPlacement,
+      sidebarWidth,
+      workspaceDensity,
+      workspaceFlow,
+      regionFlowCustom,
+      activeUiPresetId,
+      layoutEditMode,
+      mergeGeneratedAttacks,
+      persistThemePerAccount,
+      uiSoundsEnabled,
+      beeThemeUnlocked,
+      activeAccountId,
+      characters.length,
+      campaigns.length,
+      campaignMembers.length,
+      editor,
+      selectedCampaignId,
+      encounterRound,
+      battleParticipants.length,
+      battleDrafts
+    ]
+  )
+
+  if (!open) return <>{children}</>
+
+  const tabBtn = (id: DevPanelTab, label: string): JSX.Element => (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={activeTab === id}
+      onClick={() => setActiveTab(id)}
+      className={cn(
+        'shrink-0 rounded-lg border-2 border-transparent px-3 py-2.5 text-left text-xs font-bold tracking-wide transition-colors',
+        'max-lg:whitespace-nowrap max-lg:py-2 max-lg:pl-2.5 max-lg:pr-3',
+        'lg:w-full lg:py-2.5',
+        activeTab === id
+          ? 'border-zinc-600 bg-zinc-900 text-white shadow-sm dark:border-zinc-400 dark:bg-zinc-100 dark:text-zinc-900'
+          : 'text-zinc-600 hover:border-zinc-300 hover:bg-white dark:text-zinc-300 dark:hover:border-zinc-600 dark:hover:bg-zinc-800/80'
+      )}
+    >
+      {label}
+    </button>
+  )
+
+  const bigAction = (label: string, onClick: () => void, variant: 'neutral' | 'accent' = 'neutral'): JSX.Element => (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        'ecs-interactive w-full rounded-xl border-2 px-4 py-4 text-left text-base font-bold leading-snug transition-colors',
+        variant === 'accent'
+          ? 'border-amber-600 bg-amber-500 text-white hover:bg-amber-400 dark:border-amber-400 dark:bg-amber-600 dark:hover:bg-amber-500'
+          : 'border-zinc-300 bg-white hover:bg-zinc-50 dark:border-zinc-600 dark:bg-zinc-900 dark:hover:bg-zinc-800'
+      )}
+    >
+      {label}
+    </button>
+  )
+
+  return (
+    <div
+      className={cn(
+        'flex w-full min-w-0 flex-col gap-3 overflow-hidden',
+        'max-lg:h-[calc(100dvh-5rem)] max-lg:max-h-[calc(100dvh-5rem)]',
+        'lg:grid lg:h-[calc(100dvh-3.5rem)] lg:max-h-[calc(100dvh-3.5rem)] lg:grid-cols-[10.5rem_minmax(0,1fr)_minmax(17rem,22rem)] lg:grid-rows-1 lg:gap-4'
+      )}
+    >
+      <aside
+        className={cn(
+          'order-1 flex shrink-0 flex-col gap-2 rounded-xl border-2 border-zinc-400 bg-zinc-100 p-2 shadow-sm dark:border-zinc-600 dark:bg-zinc-900',
+          'max-lg:max-h-[min(9.75rem,26svh)] max-lg:overflow-hidden',
+          'lg:col-start-1 lg:row-start-1 lg:h-full lg:max-h-none lg:min-h-0 lg:overflow-y-auto'
+        )}
+      >
+        <div className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-300 pb-2 dark:border-zinc-600">
+          <span className="text-[11px] font-black uppercase tracking-[0.14em] text-zinc-600 dark:text-zinc-300">
+            Workshop
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            className="shrink-0 rounded-md border-2 border-zinc-500 bg-white px-2 py-1 text-[10px] font-black uppercase text-zinc-900 hover:bg-zinc-50 dark:border-zinc-500 dark:bg-zinc-800 dark:text-zinc-50 dark:hover:bg-zinc-700"
+          >
+            Exit
+          </button>
+        </div>
+        <nav
+          role="tablist"
+          aria-label="Workshop sections"
+          className={cn(
+            'flex min-h-0 min-w-0 flex-1 flex-col gap-1 overflow-y-auto lg:overflow-y-visible',
+            'max-lg:flex-row max-lg:flex-nowrap max-lg:gap-1.5 max-lg:overflow-x-auto max-lg:overflow-y-hidden max-lg:py-0.5'
+          )}
+        >
+          {tabBtn('workbench', 'Workbench')}
+          {tabBtn('overview', 'Overview')}
+          {tabBtn('state', 'State')}
+          {tabBtn('theme', 'Theme')}
+          {tabBtn('storage', 'Storage')}
+          {tabBtn('data', 'Data')}
+          {tabBtn('strings', 'UI copy')}
+        </nav>
+      </aside>
+
+      <div className="order-2 flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto overflow-x-hidden overscroll-contain lg:col-start-2 lg:row-start-1 lg:h-full lg:overflow-y-auto">
+        {children}
+      </div>
+
+      <section
+        role="region"
+        aria-label="Workshop panel"
+        className={cn(
+          'order-3 flex min-h-0 min-w-0 shrink-0 flex-col overflow-hidden rounded-xl border-2 border-zinc-400 bg-stone-50 shadow-md dark:border-zinc-600 dark:bg-zinc-950',
+          'max-lg:max-h-[min(36vh,18rem)]',
+          'lg:col-start-3 lg:row-start-1 lg:h-full lg:max-h-none'
+        )}
+      >
+        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-4 md:p-5">
+          {activeTab === 'workbench' ? (
+            <div className="mx-auto flex max-w-6xl flex-col gap-6">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <div className="space-y-3">
+                  <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400">
+                    Masks & menus
+                  </h3>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {bigAction('Open Theme menu', () => {
+                      setShowSettingsMenu(false)
+                      setShowThemeMenu(true)
+                    })}
+                    {bigAction('Open Settings', () => {
+                      setShowThemeMenu(false)
+                      setShowSettingsMenu(true)
+                    })}
+                    {bigAction(
+                      layoutEditMode ? 'Exit layout editor' : 'Reorder workspace chrome',
+                      () => setLayoutEditMode((v) => !v)
+                    )}
+                    {bigAction(guidedSetup ? 'Hide helper blurbs' : 'Show helper blurbs', () => setGuidedSetup(!guidedSetup))}
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400">
+                    Jump in the UI
+                  </h3>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {bigAction('Home tab', () => setWorkspaceTab('home'), 'accent')}
+                    {bigAction('Sheet tab', () => setWorkspaceTab('sheet'), 'accent')}
+                    {bigAction('Battle tab', () => setWorkspaceTab('battle'), 'accent')}
+                  </div>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border-2 border-zinc-300 bg-white p-4 dark:border-zinc-600 dark:bg-zinc-900">
+                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400">
+                  Chrome (no rebuild for these)
+                </h3>
+                <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  <SettingsField label="Corners" hint="Clip-path era vs soft rectangles." htmlFor="wb-corners">
+                    <select
+                      id="wb-corners"
+                      value={cornerStyle}
+                      onChange={(e) => setCornerStyle(e.target.value as CornerStyle)}
+                      className="mt-2 w-full rounded-lg border-2 border-zinc-300 bg-transparent px-3 py-2 text-sm font-semibold dark:border-zinc-600"
+                    >
+                      <option value="soft">soft</option>
+                      <option value="era">era</option>
+                      <option value="sharp">sharp</option>
+                      <option value="organic">organic</option>
+                    </select>
+                  </SettingsField>
+                  <SettingsField label="Density" hint="Tight vs airy workspace grid." htmlFor="wb-density">
+                    <select
+                      id="wb-density"
+                      value={workspaceDensity}
+                      onChange={(e) => setWorkspaceDensity(e.target.value as WorkspaceDensity)}
+                      className="mt-2 w-full rounded-lg border-2 border-zinc-300 bg-transparent px-3 py-2 text-sm font-semibold dark:border-zinc-600"
+                    >
+                      <option value="cozy">cozy</option>
+                      <option value="comfortable">comfortable</option>
+                      <option value="spacious">spacious</option>
+                    </select>
+                  </SettingsField>
+                  <SettingsField label="Shadow weight" hint="Card lift on the main grid." htmlFor="wb-chrome">
+                    <select
+                      id="wb-chrome"
+                      value={chromeWeight}
+                      onChange={(e) => setChromeWeight(e.target.value as ChromeWeight)}
+                      className="mt-2 w-full rounded-lg border-2 border-zinc-300 bg-transparent px-3 py-2 text-sm font-semibold dark:border-zinc-600"
+                    >
+                      <option value="light">light</option>
+                      <option value="standard">standard</option>
+                      <option value="heavy">heavy</option>
+                    </select>
+                  </SettingsField>
+                  <SettingsField
+                    label="Sidebar placement"
+                    hint="Campaign column side on large screens."
+                    htmlFor="wb-side-p"
+                  >
+                    <select
+                      id="wb-side-p"
+                      value={sidebarPlacement}
+                      onChange={(e) => setSidebarPlacement(e.target.value as SidebarPlacement)}
+                      className="mt-2 w-full rounded-lg border-2 border-zinc-300 bg-transparent px-3 py-2 text-sm font-semibold dark:border-zinc-600"
+                    >
+                      <option value="auto">Auto — palette default</option>
+                      <option value="left">Force left column</option>
+                      <option value="right">Force right column</option>
+                    </select>
+                  </SettingsField>
+                  <SettingsField
+                    label="Sidebar width"
+                    hint="Only when sidebar is not Auto. Clears saved UI preset when changed."
+                    htmlFor="wb-side-w"
+                  >
+                    <select
+                      id="wb-side-w"
+                      value={sidebarWidth}
+                      onChange={(e) => {
+                        setSidebarWidth(e.target.value as SidebarWidthPreset)
+                        setActiveUiPresetId(null)
+                      }}
+                      className="mt-2 w-full rounded-lg border-2 border-zinc-300 bg-transparent px-3 py-2 text-sm font-semibold dark:border-zinc-600"
+                    >
+                      <option value="compact">Compact — 240px</option>
+                      <option value="medium">Medium — 300px</option>
+                      <option value="wide">Wide — 380px</option>
+                    </select>
+                  </SettingsField>
+                  <SettingsField label="Sheet / battle density" hint="Compact hides fluff on sheet and cards." htmlFor="wb-comp">
+                    <div className="mt-2 flex flex-col gap-2">
+                      <label className="flex items-center gap-2 text-sm font-semibold">
+                        <input
+                          type="checkbox"
+                          checked={compactCreator}
+                          onChange={(e) => setCompactCreator(e.target.checked)}
+                        />
+                        Compact sheet editor
+                      </label>
+                      <label className="flex items-center gap-2 text-sm font-semibold">
+                        <input
+                          type="checkbox"
+                          checked={compactBattle}
+                          onChange={(e) => setCompactBattle(e.target.checked)}
+                        />
+                        Compact battle cards
+                      </label>
+                      <label className="flex items-center gap-2 text-sm font-semibold">
+                        <input
+                          type="checkbox"
+                          checked={mergeGeneratedAttacks}
+                          onChange={(e) => setMergeGeneratedAttacks(e.target.checked)}
+                        />
+                        Merge generated attacks on re-gen
+                      </label>
+                      <label className="flex items-center gap-2 text-sm font-semibold">
+                        <input
+                          type="checkbox"
+                          checked={uiSoundsEnabled}
+                          onChange={(e) => setUiSoundsEnabled(e.target.checked)}
+                        />
+                        UI click sounds
+                      </label>
+                      <label className="flex items-center gap-2 text-sm font-semibold">
+                        <input
+                          type="checkbox"
+                          checked={persistThemePerAccount}
+                          onChange={(e) => setPersistThemePerAccount(e.target.checked)}
+                        />
+                        Remember theme per account
+                      </label>
+                    </div>
+                  </SettingsField>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border-2 border-zinc-300 bg-zinc-100/50 p-4 dark:border-zinc-600 dark:bg-zinc-900/40">
+                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400">
+                  Source files — copy path
+                </h3>
+                <ul className="mt-3 grid gap-2 md:grid-cols-2">
+                  {DEV_FILE_SHORTCUTS.map((row) => (
+                    <li
+                      key={row.path}
+                      className="flex flex-col gap-1 rounded-xl border border-zinc-300 bg-white p-3 dark:border-zinc-600 dark:bg-zinc-950"
+                    >
+                      <div className="text-sm font-bold text-zinc-900 dark:text-zinc-100">{row.label}</div>
+                      <code className="break-all text-xs font-mono text-amber-800 dark:text-amber-300">{row.path}</code>
+                      <div className="text-xs text-zinc-600 dark:text-zinc-400">{row.note}</div>
+                      <button
+                        type="button"
+                        className="ecs-interactive mt-1 self-start rounded-lg border-2 border-zinc-400 px-3 py-1.5 text-xs font-bold uppercase tracking-wide hover:bg-zinc-100 dark:border-zinc-500 dark:hover:bg-zinc-800"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(row.path)
+                          setAppMessage(`Copied ${row.path}`)
+                        }}
+                      >
+                        Copy path
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'overview' ? (
+            <div className="space-y-3">
+              <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
+                <h3 className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                  App
+                </h3>
+                <dl className="mt-1 grid grid-cols-[auto,1fr] gap-x-3 gap-y-0.5 text-xs">
+                  <dt className="font-semibold text-slate-500">Workspace tab</dt>
+                  <dd className="font-mono">{workspaceTab}</dd>
+                  <dt className="font-semibold text-slate-500">Active account</dt>
+                  <dd className="truncate font-mono">{activeAccountId ?? '—'}</dd>
+                  <dt className="font-semibold text-slate-500">Color scheme</dt>
+                  <dd className="font-mono">{colorScheme}</dd>
+                  <dt className="font-semibold text-slate-500">Theme layout</dt>
+                  <dd className="font-mono">{useThemeLayout ? 'themed' : 'default'}</dd>
+                  <dt className="font-semibold text-slate-500">Theme mode</dt>
+                  <dd className="font-mono">{themeMode}</dd>
+                  <dt className="font-semibold text-slate-500">Rules mode</dt>
+                  <dd className="font-mono">{rulesMode}</dd>
+                  <dt className="font-semibold text-slate-500">Corners</dt>
+                  <dd className="font-mono">{cornerStyle}</dd>
+                  <dt className="font-semibold text-slate-500">Chrome</dt>
+                  <dd className="font-mono">{chromeWeight}</dd>
+                  <dt className="font-semibold text-slate-500">Density</dt>
+                  <dd className="font-mono">{workspaceDensity}</dd>
+                  <dt className="font-semibold text-slate-500">Sidebar</dt>
+                  <dd className="font-mono">
+                    {sidebarPlacement}
+                    {sidebarPlacement !== 'auto' ? ` / ${sidebarWidth}` : ''}
+                  </dd>
+                  <dt className="font-semibold text-slate-500">Region flow</dt>
+                  <dd className="font-mono">{workspaceFlow.join(' → ')}</dd>
+                  <dt className="font-semibold text-slate-500">Flow custom</dt>
+                  <dd className="font-mono">{regionFlowCustom ? 'yes' : 'no'}</dd>
+                  <dt className="font-semibold text-slate-500">Layout edit</dt>
+                  <dd className="font-mono">{layoutEditMode ? 'on' : 'off'}</dd>
+                  <dt className="font-semibold text-slate-500">UI preset</dt>
+                  <dd className="truncate font-mono">{activeUiPresetId ?? '—'}</dd>
+                </dl>
+              </div>
+              <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
+                <h3 className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                  Counts
+                </h3>
+                <dl className="mt-1 grid grid-cols-[auto,1fr] gap-x-3 gap-y-0.5 text-xs">
+                  <dt className="font-semibold text-slate-500">Characters</dt>
+                  <dd className="font-mono">{characters.length}</dd>
+                  <dt className="font-semibold text-slate-500">Campaigns</dt>
+                  <dd className="font-mono">{campaigns.length}</dd>
+                  <dt className="font-semibold text-slate-500">Campaign members</dt>
+                  <dd className="font-mono">{campaignMembers.length}</dd>
+                  <dt className="font-semibold text-slate-500">Battle participants</dt>
+                  <dd className="font-mono">{battleParticipants.length}</dd>
+                  <dt className="font-semibold text-slate-500">Encounter round</dt>
+                  <dd className="font-mono">{encounterRound}</dd>
+                </dl>
+              </div>
+              <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
+                <h3 className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                  Shortcuts
+                </h3>
+                <ul className="mt-1 space-y-0.5 text-xs">
+                  <li>
+                    <span className="font-mono">⌘ ⌥ I</span>
+                    <span className="ml-2 text-slate-500">— open Chrome DevTools</span>
+                  </li>
+                  <li>
+                    <span className="font-mono">F12</span>
+                    <span className="ml-2 text-slate-500">— same on Linux / Windows</span>
+                  </li>
+                  <li>
+                    <span className="font-mono">⌘ R / Ctrl R</span>
+                    <span className="ml-2 text-slate-500">— hard reload renderer</span>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'state' ? (
+            <div>
+              <p className="text-xs text-slate-500">
+                Live snapshot of current renderer state. Useful when reproducing a bug.
+              </p>
+              <pre className="mt-2 max-h-[55vh] overflow-auto rounded-md border border-slate-200 bg-slate-50 p-3 text-[11px] leading-relaxed dark:border-slate-700 dark:bg-slate-950">
+{stateSnapshot}
+              </pre>
+              <button
+                type="button"
+                onClick={() => {
+                  void navigator.clipboard.writeText(stateSnapshot)
+                  setAppMessage('State snapshot copied to clipboard.')
+                }}
+                className="mt-2 ecs-interactive rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
+              >
+                Copy as JSON
+              </button>
+            </div>
+          ) : null}
+
+          {activeTab === 'theme' ? (
+            <div className="space-y-3">
+              <p className="text-xs text-slate-500">
+                Force any theme without leaving this dialog. Changes apply immediately.
+              </p>
+              <SettingsField
+                label="Color scheme"
+                hint="Override the visual era from one place — no need to scroll the picker."
+                htmlFor="dev-scheme"
+              >
+                <select
+                  id="dev-scheme"
+                  value={colorScheme}
+                  onChange={(event) => setColorScheme(event.target.value as ColorScheme)}
+                  className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                >
+                  <option value="default">default</option>
+                  <option value="violet">violet (Aero)</option>
+                  <option value="teal">teal (Win98)</option>
+                  <option value="sunset">sunset (Y2K)</option>
+                  <option value="wii">wii</option>
+                  <option value="ps3">ps3 (PS3 XMB)</option>
+                  <option value="xbox360">xbox360 (NXE)</option>
+                  <option value="cube">cube (GameCube)</option>
+                  <option value="wiiu">wiiu</option>
+                  <option value="3ds">3ds</option>
+                  {beeThemeUnlocked ? <option value="bee">bee (Honey bee)</option> : null}
+                </select>
+              </SettingsField>
+              <SettingsField
+                label="Layout"
+                hint="Themed reshapes the page; default keeps the standard sidebar-left layout."
+                htmlFor="dev-layout"
+              >
+                <select
+                  id="dev-layout"
+                  value={useThemeLayout ? 'themed' : 'default'}
+                  onChange={(event) => setUseThemeLayout(event.target.value === 'themed')}
+                  className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                >
+                  <option value="themed">themed</option>
+                  <option value="default">default (no layout shift)</option>
+                </select>
+              </SettingsField>
+              <SettingsField
+                label="Light / dark"
+                hint="Force light or dark regardless of OS preference."
+                htmlFor="dev-mode"
+              >
+                <select
+                  id="dev-mode"
+                  value={themeMode}
+                  onChange={(event) => setThemeMode(event.target.value as ThemeMode)}
+                  className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                >
+                  <option value="system">system</option>
+                  <option value="light">light</option>
+                  <option value="dark">dark</option>
+                </select>
+              </SettingsField>
+              <SettingsField
+                label="Rules mode"
+                hint="Switch the editor between TTRPG (freeform) and DnD (5e SRD-aligned) without restart."
+                htmlFor="dev-rules"
+              >
+                <select
+                  id="dev-rules"
+                  value={rulesMode}
+                  onChange={(event) => setRulesMode(event.target.value as RulesMode)}
+                  className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                >
+                  <option value="ttrpg">ttrpg</option>
+                  <option value="dnd">dnd</option>
+                </select>
+              </SettingsField>
+            </div>
+          ) : null}
+
+          {activeTab === 'storage' ? (
+            <div className="space-y-3">
+              <p className="text-xs text-slate-500">
+                Browser-side persisted preferences. Clearing wipes UI prefs only — your characters
+                and campaigns live in the app database.
+              </p>
+              {storageKeys.length === 0 ? (
+                <div className="rounded-md border border-dashed border-slate-300 p-3 text-xs text-slate-500 dark:border-slate-700">
+                  localStorage is empty.
+                </div>
+              ) : (
+                <ul className="max-h-[45vh] space-y-1 overflow-y-auto rounded-md border border-slate-200 p-2 text-[11px] dark:border-slate-700">
+                  {storageKeys.map((entry) => (
+                    <li key={entry.key} className="rounded border border-slate-100 px-2 py-1 dark:border-slate-800">
+                      <div className="font-mono font-semibold">{entry.key}</div>
+                      <div className="truncate font-mono text-slate-500">{entry.value || '(empty)'}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (window.confirm('Clear all UI preferences in localStorage? Reload to re-apply defaults.')) {
+                      window.localStorage.clear()
+                      setAppMessage('Cleared localStorage. Reload to apply defaults.')
+                      setStorageKeys([])
+                    }
+                  }}
+                  className="ecs-interactive rounded-md border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                >
+                  Clear localStorage
+                </button>
+                <button
+                  type="button"
+                  onClick={() => window.location.reload()}
+                  className="ecs-interactive rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
+                >
+                  Reload renderer
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'data' ? (
+            <div className="space-y-3">
+              <div className="rounded-md border border-slate-200 p-3 dark:border-slate-700">
+                <h3 className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-500 dark:text-slate-400">
+                  Seed sample data
+                </h3>
+                <p className="mt-1 text-xs text-slate-500">
+                  Create the six Toa as level-5 sample characters with attack keywords pre-set.
+                  Useful for testing campaign sharing, the battle board, or attack generation.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void seedSampleCharacters()}
+                  disabled={seedBusy || !activeAccountId}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-amber-500 px-3 py-1.5 text-xs font-bold uppercase text-white hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40"
+                >
+                  {seedBusy ? 'Seeding…' : 'Seed 6 Toa characters'}
+                </button>
+              </div>
+              <div className="rounded-md border border-rose-200 p-3 dark:border-rose-500/40">
+                <h3 className="text-[10px] font-bold uppercase tracking-[0.18em] text-rose-700 dark:text-rose-300">
+                  Danger zone
+                </h3>
+                <p className="mt-1 text-xs text-rose-600 dark:text-rose-300/80">
+                  Delete every character on this account. This cannot be undone.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void deleteAllCharacters()}
+                  disabled={characters.length === 0}
+                  className="mt-2 inline-flex items-center gap-1.5 rounded-md border border-rose-300 px-3 py-1.5 text-xs font-bold uppercase text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-500/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                >
+                  Delete all {characters.length} characters
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {activeTab === 'strings' ? (
+            <div className="mx-auto max-w-3xl space-y-4">
+              <p className="text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
+                These lines feed the signed-in shell (header, sidebar, tabs, activity strip). Overrides live in{' '}
+                <code className="rounded bg-zinc-200 px-1 font-mono text-xs dark:bg-zinc-800">localStorage</code> on this
+                machine — leave a field blank to use the default again.
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearUiCopyOverrides()
+                    setUiCopyOverrides({})
+                    setAppMessage('All UI copy reset to built-in defaults.')
+                  }}
+                  className="ecs-interactive rounded-lg border-2 border-rose-400 px-3 py-2 text-xs font-bold uppercase text-rose-800 hover:bg-rose-50 dark:border-rose-500 dark:text-rose-200 dark:hover:bg-rose-500/15"
+                >
+                  Reset all copy
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(JSON.stringify(uiCopyOverrides, null, 2))
+                    setAppMessage('Exported overrides JSON to clipboard.')
+                  }}
+                  className="ecs-interactive rounded-lg border-2 border-zinc-400 px-3 py-2 text-xs font-bold uppercase text-zinc-800 hover:bg-zinc-100 dark:border-zinc-500 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  Copy JSON
+                </button>
+              </div>
+              <ul className="space-y-4">
+                {(Object.keys(UI_COPY_DEFAULTS) as UiCopyKey[]).map((key) => (
+                  <li key={key} className="rounded-xl border-2 border-zinc-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-900">
+                    <label className="block">
+                      <span className="font-mono text-[11px] font-semibold text-amber-800 dark:text-amber-300">{key}</span>
+                      <span className="mt-0.5 block text-[10px] text-zinc-500 dark:text-zinc-400">
+                        Default: {UI_COPY_DEFAULTS[key]}
+                      </span>
+                      <textarea
+                        value={uiCopyOverrides[key] ?? ''}
+                        onChange={(event) => {
+                          const v = event.target.value
+                          setUiCopyOverrides((prev) => {
+                            const next = { ...prev }
+                            if (v.trim() === '') delete next[key]
+                            else next[key] = v
+                            return next
+                          })
+                        }}
+                        placeholder={UI_COPY_DEFAULTS[key]}
+                        rows={Math.min(6, 2 + Math.ceil(UI_COPY_DEFAULTS[key].length / 72))}
+                        className="mt-2 w-full rounded-lg border-2 border-zinc-300 bg-zinc-50 px-3 py-2 text-sm leading-snug text-zinc-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
+                      />
+                    </label>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+        </div>
+      </section>
+    </div>
   )
 }
 
 export default function App(): JSX.Element {
-  const [themeMode, setThemeMode] = useState<ThemeMode>('system')
-  const [visualStyle, setVisualStyle] = useState<VisualStyle>('clean')
-  const [colorScheme, setColorScheme] = useState<ColorScheme>('default')
-  const [useThemeLayout, setUseThemeLayout] = useState<boolean>(true)
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => {
+    const g = typeof window !== 'undefined' ? readStoredAppearance(GUEST_APPEARANCE_KEY) : null
+    return parseThemeMode(g?.themeMode) ?? 'system'
+  })
+  const [colorScheme, setColorScheme] = useState<ColorScheme>(() => {
+    const g = typeof window !== 'undefined' ? readStoredAppearance(GUEST_APPEARANCE_KEY) : null
+    return parseColorScheme(g?.colorScheme)
+  })
+  const [useThemeLayout, setUseThemeLayout] = useState<boolean>(() => {
+    const g = typeof window !== 'undefined' ? readStoredAppearance(GUEST_APPEARANCE_KEY) : null
+    return typeof g?.useThemeLayout === 'boolean' ? g.useThemeLayout : true
+  })
+  const [cornerStyle, setCornerStyle] = useState<CornerStyle>(() => {
+    const g = typeof window !== 'undefined' ? readStoredAppearance(GUEST_APPEARANCE_KEY) : null
+    return parseCornerStyle(g?.cornerStyle, g?.useSoftCorners)
+  })
+  const [chromeWeight, setChromeWeight] = useState<ChromeWeight>(() => {
+    const g = typeof window !== 'undefined' ? readStoredAppearance(GUEST_APPEARANCE_KEY) : null
+    return parseChromeWeight(g?.chromeWeight)
+  })
+  const [sidebarPlacement, setSidebarPlacement] = useState<SidebarPlacement>(() => {
+    const g = typeof window !== 'undefined' ? readStoredAppearance(GUEST_APPEARANCE_KEY) : null
+    return parseSidebarPlacement(g?.sidebarPlacement)
+  })
+  const [sidebarWidth, setSidebarWidth] = useState<SidebarWidthPreset>(() => {
+    const g = typeof window !== 'undefined' ? readStoredAppearance(GUEST_APPEARANCE_KEY) : null
+    return parseSidebarWidth(g?.sidebarWidth)
+  })
+  const [workspaceDensity, setWorkspaceDensity] = useState<WorkspaceDensity>(() => {
+    const g = typeof window !== 'undefined' ? readStoredAppearance(GUEST_APPEARANCE_KEY) : null
+    return parseWorkspaceDensity(g?.workspaceDensity)
+  })
+  const [regionFlowCustom, setRegionFlowCustom] = useState<boolean>(() => {
+    const g = typeof window !== 'undefined' ? readStoredAppearance(GUEST_APPEARANCE_KEY) : null
+    return g?.regionFlowCustom === true
+  })
+  const [workspaceFlow, setWorkspaceFlow] = useState<WorkspaceFlowRegion[]>(() => {
+    const g = typeof window !== 'undefined' ? readStoredAppearance(GUEST_APPEARANCE_KEY) : null
+    if (g?.regionFlowCustom === true) return normalizeWorkspaceFlow(g.workspaceFlow)
+    return themedWorkspaceFlowDefault(
+      parseColorScheme(g?.colorScheme),
+      typeof g?.useThemeLayout === 'boolean' ? g.useThemeLayout : true
+    )
+  })
+  const [activeUiPresetId, setActiveUiPresetId] = useState<string | null>(() => {
+    const g = typeof window !== 'undefined' ? readStoredAppearance(GUEST_APPEARANCE_KEY) : null
+    return typeof g?.activeUiPresetId === 'string' ? g.activeUiPresetId : null
+  })
+  const [layoutEditMode, setLayoutEditMode] = useState(false)
+  const [layoutPanelDragFrom, setLayoutPanelDragFrom] = useState<WorkspaceFlowRegion | null>(null)
+  const [layoutPanelDropOver, setLayoutPanelDropOver] = useState<WorkspaceFlowRegion | null>(null)
+  const [layoutA11yMessage, setLayoutA11yMessage] = useState('')
+  const layoutFlowAnnouncedRef = useRef<string>('')
+  const [uiPresets, setUiPresets] = useState<UiLayoutPreset[]>(() =>
+    typeof window !== 'undefined' ? loadUiPresets() : []
+  )
+  const [newPresetDraftName, setNewPresetDraftName] = useState('My layout')
+  const [mergeGeneratedAttacks, setMergeGeneratedAttacks] = useState<boolean>(() => {
+    const g = typeof window !== 'undefined' ? readStoredAppearance(GUEST_APPEARANCE_KEY) : null
+    return typeof g?.mergeGeneratedAttacks === 'boolean' ? g.mergeGeneratedAttacks : false
+  })
+  const [persistThemePerAccount, setPersistThemePerAccount] = useState<boolean>(() => {
+    const g = typeof window !== 'undefined' ? readStoredAppearance(GUEST_APPEARANCE_KEY) : null
+    return typeof g?.persistThemePerAccount === 'boolean' ? g.persistThemePerAccount : true
+  })
+  const [uiSoundsEnabled, setUiSoundsEnabled] = useState<boolean>(() => {
+    const g = typeof window !== 'undefined' ? readStoredAppearance(GUEST_APPEARANCE_KEY) : null
+    return typeof g?.uiSoundsEnabled === 'boolean' ? g.uiSoundsEnabled : false
+  })
   const [systemDark, setSystemDark] = useState(false)
   const [isAuthed, setIsAuthed] = useState(false)
   const [authMode, setAuthMode] = useState<AuthMode>('login')
@@ -218,12 +1499,21 @@ export default function App(): JSX.Element {
   const [authPassword, setAuthPassword] = useState('')
   const [authDisplayName, setAuthDisplayName] = useState('')
   const [devPassword, setDevPassword] = useState('')
+  const [devModeUnlocked, setDevModeUnlocked] = useState(false)
+  const [showDevPanel, setShowDevPanel] = useState(false)
+  const [devPanelTab, setDevPanelTab] = useState<DevPanelTab>('workbench')
+  const [uiCopyOverrides, setUiCopyOverrides] = useState<UiCopyOverrides>(() =>
+    typeof window !== 'undefined' ? loadUiCopyOverrides() : {}
+  )
   const [resetToken, setResetToken] = useState('')
   const [newResetPassword, setNewResetPassword] = useState('')
   const [resetTokenHint, setResetTokenHint] = useState<string | null>(null)
   const [authMessage, setAuthMessage] = useState<string | null>(null)
   const [smtpMessage, setSmtpMessage] = useState<string | null>(null)
   const [showAdvancedAuthTools, setShowAdvancedAuthTools] = useState(false)
+  const [beeThemeUnlocked, setBeeThemeUnlocked] = useState(() => readBeeThemeUnlocked())
+  const [secretCodeInput, setSecretCodeInput] = useState('')
+  const [secretCodeHint, setSecretCodeHint] = useState<string | null>(null)
 
   const [activeAccountId, setActiveAccountId] = useState<string | null>(null)
   const [campaigns, setCampaigns] = useState<CampaignRecord[]>([])
@@ -233,12 +1523,14 @@ export default function App(): JSX.Element {
   const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null)
   const [newCampaignName, setNewCampaignName] = useState('')
   const [joinCode, setJoinCode] = useState('')
-  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('sheet')
+  const [campaignAddMode, setCampaignAddMode] = useState<'create' | 'join'>('create')
+  const [workspaceTab, setWorkspaceTab] = useState<WorkspaceTab>('home')
 
   const [characters, setCharacters] = useState<CharacterRecord[]>([])
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [editor, setEditor] = useState<EditableCharacter>(emptyCharacter())
   const [keywordText, setKeywordText] = useState('')
+  const [manualAttackDraft, setManualAttackDraft] = useState<ManualAttackDraft>(() => emptyManualAttackDraft())
   const [search, setSearch] = useState('')
   const [factionFilter, setFactionFilter] = useState<string>('all')
   const [appMessage, setAppMessage] = useState<string | null>(null)
@@ -249,22 +1541,39 @@ export default function App(): JSX.Element {
   const [showSettingsMenu, setShowSettingsMenu] = useState(false)
   const settingsButtonRef = useRef<HTMLButtonElement>(null)
   const [settingsPanelPos, setSettingsPanelPos] = useState<{ top: number; left: number } | null>(null)
+  const [showThemeMenu, setShowThemeMenu] = useState(false)
+  const themeMenuButtonRef = useRef<HTMLButtonElement>(null)
+  const [themeMenuPos, setThemeMenuPos] = useState<{ top: number; left: number } | null>(null)
   const [showQuickCreate, setShowQuickCreate] = useState(false)
+  const [quickStep, setQuickStep] = useState<1 | 2 | 3 | 4>(1)
   const [quickName, setQuickName] = useState('')
   const [quickHp, setQuickHp] = useState(30)
+  const [quickArmor, setQuickArmor] = useState(10)
+  const [quickLevel, setQuickLevel] = useState(1)
   const [quickFaction, setQuickFaction] = useState('')
   const [quickClass, setQuickClass] = useState<(typeof DND_CLASSES)[number]>('Fighter')
   const [quickSubclass, setQuickSubclass] = useState('')
   const [quickPreset, setQuickPreset] = useState<QuickPreset>('frontliner')
+  const [quickDescription, setQuickDescription] = useState('')
   const [showAdvancedCharacterFields, setShowAdvancedCharacterFields] = useState(false)
-  const [showAdvancedCampaignTools, setShowAdvancedCampaignTools] = useState(false)
   const [battleDrafts, setBattleDrafts] = useState<Record<string, BattleDraft>>({})
   const [battleParticipants, setBattleParticipants] = useState<string[]>([])
   const [dragCharacterId, setDragCharacterId] = useState<string | null>(null)
   const [showFirstDragHint, setShowFirstDragHint] = useState(false)
   const [encounterRound, setEncounterRound] = useState(1)
   const [activeTurnIndex, setActiveTurnIndex] = useState(0)
+  const [syncBanner, setSyncBanner] = useState<string | null>(null)
+  const syncBannerClearRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const [activityFeed, setActivityFeed] = useState<ActivityFeedEntry[]>([])
   const isApplyingRemoteBattleState = useRef(false)
+  const appearanceAccountHydrated = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    persistUiCopyOverrides(uiCopyOverrides)
+  }, [uiCopyOverrides])
+
+  const t = useCallback((key: UiCopyKey) => resolveUiCopy(uiCopyOverrides, key), [uiCopyOverrides])
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)')
@@ -274,19 +1583,150 @@ export default function App(): JSX.Element {
     return () => media.removeEventListener('change', apply)
   }, [])
 
+  useEffect(() => {
+    if (!uiSoundsEnabled) return
+
+    function targetIsButtonLike(el: EventTarget | null): boolean {
+      if (!el || !(el instanceof Element)) return false
+      const host = el.closest('button, [role="button"], input[type="button"], input[type="submit"], input[type="reset"]')
+      if (!host) return false
+      if (host.closest('[data-ecs-no-ui-sound]')) return false
+      if (host instanceof HTMLButtonElement && host.disabled) return false
+      if (host instanceof HTMLInputElement && host.disabled) return false
+      if (host.getAttribute('aria-disabled') === 'true') return false
+      return true
+    }
+
+    const onPointerDown = (event: PointerEvent): void => {
+      if (event.pointerType === 'mouse' && event.button !== 0) return
+      if (!targetIsButtonLike(event.target)) return
+      playUiButtonChime(colorScheme as ChimeColorScheme)
+    }
+
+    document.addEventListener('pointerdown', onPointerDown, true)
+    return () => document.removeEventListener('pointerdown', onPointerDown, true)
+  }, [uiSoundsEnabled, colorScheme])
+
   const darkMode = themeMode === 'system' ? systemDark : themeMode === 'dark'
   const currentMonth = new Date().getMonth() + 1
+
+  const themeSchemeMenuChoices = useMemo(
+    () => [...THEME_SCHEME_CHOICES_BASE, ...(beeThemeUnlocked ? [BEE_THEME_CHOICE] : [])],
+    [beeThemeUnlocked]
+  )
+
+  useEffect(() => {
+    if (colorScheme === 'bee' && !readBeeThemeUnlocked()) setColorScheme('default')
+  }, [colorScheme, beeThemeUnlocked])
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode)
   }, [darkMode])
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     document.documentElement.dataset.ecsPalette = colorScheme
     document.documentElement.dataset.ecsTone = darkMode ? 'dark' : 'light'
     document.documentElement.dataset.ecsMonth = String(currentMonth)
     document.documentElement.dataset.ecsLayout = useThemeLayout ? 'themed' : 'default'
-  }, [colorScheme, darkMode, currentMonth, useThemeLayout])
+    document.documentElement.dataset.ecsCorners = cornerStyle
+    document.documentElement.dataset.ecsChrome = chromeWeight
+    document.documentElement.dataset.ecsDensity = workspaceDensity
+    if (sidebarPlacement === 'auto') {
+      delete document.documentElement.dataset.ecsForceSidebar
+      delete document.documentElement.dataset.ecsSidebar
+      delete document.documentElement.dataset.ecsSidebarW
+    } else {
+      document.documentElement.dataset.ecsForceSidebar = '1'
+      document.documentElement.dataset.ecsSidebar = sidebarPlacement
+      document.documentElement.dataset.ecsSidebarW = sidebarWidth
+    }
+  }, [
+    colorScheme,
+    darkMode,
+    currentMonth,
+    useThemeLayout,
+    cornerStyle,
+    chromeWeight,
+    workspaceDensity,
+    sidebarPlacement,
+    sidebarWidth
+  ])
+
+  useLayoutEffect(() => {
+    appearanceAccountHydrated.current = null
+    if (!isAuthed || !activeAccountId || !persistThemePerAccount) return
+    const acc = readStoredAppearance(accountAppearanceKey(activeAccountId))
+    if (acc) {
+      if (acc.colorScheme) setColorScheme(parseColorScheme(acc.colorScheme))
+      const tm = parseThemeMode(acc.themeMode)
+      if (tm) setThemeMode(tm)
+      if (typeof acc.useThemeLayout === 'boolean') setUseThemeLayout(acc.useThemeLayout)
+      setCornerStyle(parseCornerStyle(acc.cornerStyle, acc.useSoftCorners))
+      setChromeWeight(parseChromeWeight(acc.chromeWeight))
+      setSidebarPlacement(parseSidebarPlacement(acc.sidebarPlacement))
+      setSidebarWidth(parseSidebarWidth(acc.sidebarWidth))
+      const cs = parseColorScheme(acc.colorScheme)
+      const tl = typeof acc.useThemeLayout === 'boolean' ? acc.useThemeLayout : true
+      const flowCustom = acc.regionFlowCustom === true
+      setRegionFlowCustom(flowCustom)
+      setWorkspaceFlow(flowCustom ? normalizeWorkspaceFlow(acc.workspaceFlow) : themedWorkspaceFlowDefault(cs, tl))
+      setActiveUiPresetId(typeof acc.activeUiPresetId === 'string' ? acc.activeUiPresetId : null)
+      if (typeof acc.mergeGeneratedAttacks === 'boolean') setMergeGeneratedAttacks(acc.mergeGeneratedAttacks)
+      if (typeof acc.uiSoundsEnabled === 'boolean') setUiSoundsEnabled(acc.uiSoundsEnabled)
+    }
+    appearanceAccountHydrated.current = activeAccountId
+  }, [isAuthed, activeAccountId, persistThemePerAccount])
+
+  useEffect(() => {
+    const payload: StoredAppearanceV1 = {
+      colorScheme,
+      themeMode,
+      useThemeLayout,
+      cornerStyle,
+      chromeWeight,
+      sidebarPlacement,
+      sidebarWidth,
+      workspaceDensity,
+      workspaceFlow,
+      regionFlowCustom,
+      activeUiPresetId,
+      mergeGeneratedAttacks,
+      persistThemePerAccount,
+      uiSoundsEnabled
+    }
+    try {
+      window.localStorage.setItem(GUEST_APPEARANCE_KEY, JSON.stringify(payload))
+      if (isAuthed && activeAccountId && persistThemePerAccount) {
+        if (appearanceAccountHydrated.current === activeAccountId) {
+          window.localStorage.setItem(accountAppearanceKey(activeAccountId), JSON.stringify(payload))
+        }
+      }
+    } catch {
+      // ignore quota / private mode
+    }
+  }, [
+    colorScheme,
+    themeMode,
+    useThemeLayout,
+    cornerStyle,
+    chromeWeight,
+    sidebarPlacement,
+    sidebarWidth,
+    workspaceDensity,
+    workspaceFlow,
+    regionFlowCustom,
+    activeUiPresetId,
+    mergeGeneratedAttacks,
+    persistThemePerAccount,
+    uiSoundsEnabled,
+    isAuthed,
+    activeAccountId
+  ])
+
+  useEffect(() => {
+    if (regionFlowCustom) return
+    setWorkspaceFlow(themedWorkspaceFlowDefault(colorScheme, useThemeLayout))
+  }, [colorScheme, useThemeLayout, regionFlowCustom])
 
   useEffect(() => {
     // Keep initialization hook for future auth provider bootstrap.
@@ -360,19 +1800,40 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     if (!isAuthed || !activeAccountId) return
-    const unsubscribe = window.syncApi.onChanged((payload) => {
+    const unsubscribe = backend.syncApi.onChanged((payload) => {
+      if (payload.activity) {
+        setActivityFeed((prev) => {
+          const a = payload.activity!
+          const entry: ActivityFeedEntry = {
+            ...a,
+            entryId: `${a.at}-${a.kind}-${Math.random().toString(36).slice(2, 9)}`
+          }
+          return [entry, ...prev].slice(0, 80)
+        })
+      }
+      const scheduleBanner = (msg: string): void => {
+        setSyncBanner(msg)
+        if (syncBannerClearRef.current) clearTimeout(syncBannerClearRef.current)
+        syncBannerClearRef.current = setTimeout(() => setSyncBanner(null), 5200)
+      }
       if (payload.scope === 'campaigns') {
+        scheduleBanner('Campaigns updated — refreshing list.')
         void loadCampaigns(activeAccountId)
         if (selectedCampaignId) void loadCampaignMembers(selectedCampaignId)
       }
       if (payload.scope === 'characters') {
+        scheduleBanner('Characters changed — syncing roster.')
         void loadCharacters(activeAccountId, selectedCampaignId)
       }
       if (payload.scope === 'battle' && selectedCampaignId && payload.campaignId === selectedCampaignId) {
+        scheduleBanner('Encounter state updated from another session.')
         void loadBattleState(selectedCampaignId)
       }
     })
-    return () => unsubscribe()
+    return () => {
+      unsubscribe()
+      if (syncBannerClearRef.current) clearTimeout(syncBannerClearRef.current)
+    }
   }, [isAuthed, activeAccountId, selectedCampaignId])
 
   useEffect(() => {
@@ -394,13 +1855,115 @@ export default function App(): JSX.Element {
   }, [isAuthed])
 
   useEffect(() => {
-    if (!showSettingsMenu) return
+    if (!showSettingsMenu && !showThemeMenu) return
     const onKeyDown = (event: KeyboardEvent): void => {
-      if (event.key === 'Escape') setShowSettingsMenu(false)
+      if (event.key === 'Escape') {
+        setShowSettingsMenu(false)
+        setShowThemeMenu(false)
+      }
     }
     window.addEventListener('keydown', onKeyDown)
     return () => window.removeEventListener('keydown', onKeyDown)
-  }, [showSettingsMenu])
+  }, [showSettingsMenu, showThemeMenu])
+
+  useEffect(() => {
+    if (showThemeMenu) setUiPresets(loadUiPresets())
+  }, [showThemeMenu])
+
+  useEffect(() => {
+    if (!layoutEditMode) return
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key === 'Escape') setLayoutEditMode(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [layoutEditMode])
+
+  useEffect(() => {
+    if (!layoutA11yMessage) return
+    const id = window.setTimeout(() => setLayoutA11yMessage(''), 4500)
+    return () => window.clearTimeout(id)
+  }, [layoutA11yMessage])
+
+  useEffect(() => {
+    if (!layoutEditMode) {
+      layoutFlowAnnouncedRef.current = ''
+      setLayoutPanelDragFrom(null)
+      setLayoutPanelDropOver(null)
+      setLayoutA11yMessage('')
+      return
+    }
+    const sig = workspaceFlow.join('|')
+    if (layoutFlowAnnouncedRef.current === '') {
+      layoutFlowAnnouncedRef.current = sig
+      return
+    }
+    if (layoutFlowAnnouncedRef.current !== sig) {
+      layoutFlowAnnouncedRef.current = sig
+      const human = workspaceFlow.map(ecsWorkspaceRegionLabel).join(', ')
+      setLayoutA11yMessage(`Vertical stack order is now: ${human}.`)
+    }
+  }, [workspaceFlow, layoutEditMode])
+
+  useEffect(() => {
+    if (!layoutEditMode) return
+    const clearDragUi = (): void => {
+      setLayoutPanelDragFrom(null)
+      setLayoutPanelDropOver(null)
+    }
+    window.addEventListener('dragend', clearDragUi)
+    window.addEventListener('drop', clearDragUi)
+    return () => {
+      window.removeEventListener('dragend', clearDragUi)
+      window.removeEventListener('drop', clearDragUi)
+    }
+  }, [layoutEditMode])
+
+  useLayoutEffect(() => {
+    if (!showThemeMenu) {
+      setThemeMenuPos(null)
+      return
+    }
+    const panelWidth = 352
+    const gap = 8
+    const measure = (): void => {
+      const vv = window.visualViewport
+      const vh = vv?.height ?? window.innerHeight
+      const offsetTop = vv?.offsetTop ?? 0
+      const approxPanelHeight = Math.min(720, Math.max(320, vh - 24))
+      const margin = 8 + offsetTop
+      const el = themeMenuButtonRef.current
+      let left: number
+      let top: number
+      if (!el) {
+        left = Math.max(8, window.innerWidth - panelWidth - 16)
+        top = margin + 48
+      } else {
+        const rect = el.getBoundingClientRect()
+        left = rect.right - panelWidth
+        left = Math.min(Math.max(8, left), window.innerWidth - panelWidth - 8)
+        top = rect.bottom + gap
+        if (top + approxPanelHeight > offsetTop + vh - 8) {
+          top = rect.top - approxPanelHeight - gap
+        }
+        const maxTop = Math.max(margin, offsetTop + vh - approxPanelHeight - 8)
+        top = Math.min(Math.max(margin, top), maxTop)
+      }
+      setThemeMenuPos({ top, left })
+    }
+    measure()
+    window.addEventListener('resize', measure)
+    window.addEventListener('scroll', measure, true)
+    const vv = window.visualViewport
+    vv?.addEventListener('resize', measure)
+    vv?.addEventListener('scroll', measure)
+    return () => {
+      window.removeEventListener('resize', measure)
+      window.removeEventListener('scroll', measure, true)
+      vv?.removeEventListener('resize', measure)
+      vv?.removeEventListener('scroll', measure)
+    }
+  }, [showThemeMenu])
 
   useLayoutEffect(() => {
     if (!showSettingsMenu) {
@@ -439,22 +2002,22 @@ export default function App(): JSX.Element {
   }, [showSettingsMenu])
 
   async function loadCampaigns(accountId: string): Promise<void> {
-    const rows = await window.campaignApi.listForAccount(accountId)
+    const rows = await backend.campaignApi.listForAccount(accountId)
     setCampaigns(rows)
   }
 
   async function loadCharacters(accountId: string, campaignId: string | null): Promise<void> {
-    const rows = await window.characterApi.list({ accountId, campaignId })
+    const rows = await backend.characterApi.list({ accountId, campaignId })
     setCharacters(rows)
   }
 
   async function loadCampaignMembers(campaignId: string): Promise<void> {
-    const members = await window.campaignApi.members(campaignId)
+    const members = await backend.campaignApi.members(campaignId)
     setCampaignMembers(members)
   }
 
   async function loadBattleState(campaignId: string): Promise<void> {
-    const state = await window.battleApi.getState(campaignId)
+    const state = await backend.battleApi.getState(campaignId)
     isApplyingRemoteBattleState.current = true
     if (state) {
       setBattleParticipants(state.participants)
@@ -478,7 +2041,7 @@ export default function App(): JSX.Element {
     turnIndex: number
   ): Promise<void> {
     if (!selectedCampaignId || !activeAccountId || isApplyingRemoteBattleState.current) return
-    await window.battleApi.saveState({
+    await backend.battleApi.saveState({
       campaignId: selectedCampaignId,
       participants,
       drafts,
@@ -489,7 +2052,7 @@ export default function App(): JSX.Element {
   }
 
   async function handleLogout(message?: string): Promise<void> {
-    await window.authApi.logout()
+    await backend.authApi.logout()
     setIsAuthed(false)
     setActiveAccountId(null)
     setSelectedCampaignId(null)
@@ -497,31 +2060,35 @@ export default function App(): JSX.Element {
     setEditor(emptyCharacter())
     setKeywordText('')
     setAppMessage(null)
+    setActivityFeed([])
     if (message) setAuthMessage(message)
   }
 
   async function handleAuthSubmit(): Promise<void> {
     setAuthMessage(null)
     if (authMode === 'dev') {
-      const result = await window.authApi.devLogin(devPassword)
+      const result = await backend.authApi.devLogin(devPassword)
       setAuthMessage(result.message)
       if (!result.ok || !result.account) return
       setIsAuthed(true)
+      setDevModeUnlocked(true)
       setActiveAccountId(result.account.id)
+      setWorkspaceTab('home')
       return
     }
 
     if (authMode === 'login') {
-      const result = await window.authApi.login({ email: authEmail, password: authPassword })
+      const result = await backend.authApi.login({ email: authEmail, password: authPassword })
       setAuthMessage(result.message)
       if (!result.ok || !result.account) return
       setIsAuthed(true)
       setActiveAccountId(result.account.id)
+      setWorkspaceTab('home')
       return
     }
 
     if (authMode === 'register') {
-      const result = await window.authApi.register({
+      const result = await backend.authApi.register({
         displayName: authDisplayName,
         email: authEmail,
         password: authPassword
@@ -530,10 +2097,11 @@ export default function App(): JSX.Element {
       if (!result.ok || !result.account) return
       setIsAuthed(true)
       setActiveAccountId(result.account.id)
+      setWorkspaceTab('home')
       return
     }
 
-    const result = await window.authApi.resetWithToken({
+    const result = await backend.authApi.resetWithToken({
       email: authEmail,
       token: resetToken,
       newPassword: newResetPassword
@@ -547,7 +2115,7 @@ export default function App(): JSX.Element {
   }
 
   async function handleRequestResetToken(): Promise<void> {
-    const result = await window.authApi.requestReset(authEmail)
+    const result = await backend.authApi.requestReset(authEmail)
     setAuthMessage(result.message)
     setResetTokenHint(result.token ? `Local reset token: ${result.token}` : null)
   }
@@ -557,16 +2125,17 @@ export default function App(): JSX.Element {
       setAuthMessage('Enter an email first to send a test message.')
       return
     }
-    const result = await window.authApi.sendTestEmail(authEmail.trim())
+    const result = await backend.authApi.sendTestEmail(authEmail.trim())
     setAuthMessage(result.message)
   }
 
   async function handleCheckSmtpStatus(): Promise<void> {
-    const status = await window.authApi.smtpStatus()
+    const status = await backend.authApi.smtpStatus()
     setSmtpMessage(status.message)
   }
 
   function openCharacter(record: CharacterRecord): void {
+    setWorkspaceTab('sheet')
     setSelectedId(record.id)
     setEditor({
       id: record.id,
@@ -640,87 +2209,94 @@ export default function App(): JSX.Element {
     setAppMessage(`Applied ${preset} preset.`)
   }
 
-  function quickPresetDefaults(preset: QuickPreset): {
-    archetype: string
-    factionGroup: string
-    dedicatedEssence: string
-    armorMax: number
-    armorCurrent: number
-  } {
-    if (preset === 'frontliner') {
-      return {
-        archetype: 'Frontliner',
-        factionGroup: 'Vanguard',
-        dedicatedEssence: 'Steel Discipline',
-        armorMax: 14,
-        armorCurrent: 14
-      }
+  function resetQuickWizard(): void {
+    setQuickStep(1)
+    setQuickName('')
+    setQuickHp(30)
+    setQuickArmor(10)
+    setQuickLevel(1)
+    setQuickFaction('')
+    setQuickClass('Fighter')
+    setQuickSubclass('')
+    setQuickPreset('frontliner')
+    setQuickDescription('')
+  }
+
+  function openQuickCreate(): void {
+    setWorkspaceTab('sheet')
+    resetQuickWizard()
+    setShowQuickCreate(true)
+  }
+
+  function quickBaselineForCurrentMode(): { hp: number; ac: number; archetype: string; faction: string; essence: string } {
+    if (rulesMode === 'dnd') {
+      const baseline = DND_CLASS_BASELINE[quickClass] ?? { hp: 10, ac: 14 }
+      return { hp: baseline.hp, ac: baseline.ac, archetype: quickClass, faction: '', essence: '' }
     }
-    if (preset === 'caster') {
-      return {
-        archetype: 'Caster',
-        factionGroup: 'Arc Circle',
-        dedicatedEssence: 'Aether',
-        armorMax: 8,
-        armorCurrent: 8
-      }
-    }
+    const preset = TTRPG_PRESETS[quickPreset]
     return {
-      archetype: 'Rogue',
-      factionGroup: 'Night Guild',
-      dedicatedEssence: 'Shadowstep',
-      armorMax: 10,
-      armorCurrent: 10
+      hp: preset.hp,
+      ac: preset.ac,
+      archetype: preset.archetype,
+      faction: preset.factionGroup,
+      essence: preset.dedicatedEssence
     }
+  }
+
+  function applyQuickBaselineStats(): void {
+    const baseline = quickBaselineForCurrentMode()
+    setQuickHp(baseline.hp)
+    setQuickArmor(baseline.ac)
   }
 
   async function createQuickCharacter(): Promise<void> {
     if (!activeAccountId) return
     const name = quickName.trim()
     if (!name) {
-      setAppMessage('Quick create needs a character name.')
+      setAppMessage('Add a character name on step 2 before creating.')
+      setQuickStep(2)
       return
     }
-    const hp = Math.max(1, Number(quickHp) || 1)
-    const preset = quickPresetDefaults(quickPreset)
+    const baseline = quickBaselineForCurrentMode()
     const dndMode = rulesMode === 'dnd'
-    const classBaseline = DND_CLASS_BASELINE[quickClass] ?? { hp, ac: 14 }
-    const startingHp = dndMode ? Math.max(hp, classBaseline.hp) : hp
+    const hp = Math.max(1, Number(quickHp) || baseline.hp)
+    const ac = Math.max(0, Number(quickArmor) || baseline.ac)
+    const level = Math.max(1, Math.min(30, Number(quickLevel) || 1))
+    const factionFromInput = quickFaction.trim()
+    const factionFallback = dndMode ? '' : baseline.faction
+    const starterKw = dndMode ? starterKeywordsForDndArchetype(quickClass) : []
     const payload: CharacterSaveInput = {
       ...emptyCharacter(),
       name,
-      hpCurrent: startingHp,
-      hpMax: startingHp,
-      factionGroup: quickFaction.trim() || (dndMode ? preset.factionGroup : ''),
-      archetype: dndMode ? quickClass : '',
-      dedicatedEssence: dndMode ? quickSubclass.trim() : '',
-      armorCurrent: dndMode ? classBaseline.ac : 10,
-      armorMax: dndMode ? classBaseline.ac : 10,
+      hpCurrent: hp,
+      hpMax: hp,
+      armorCurrent: ac,
+      armorMax: ac,
+      level,
+      factionGroup: factionFromInput || factionFallback,
+      archetype: dndMode ? quickClass : baseline.archetype,
+      dedicatedEssence: dndMode ? quickSubclass.trim() : baseline.essence,
+      notes: quickDescription.trim(),
       ownerAccountId: activeAccountId,
       campaignId: selectedCampaignId,
-      keywords: []
+      keywords: starterKw
     }
-    const saved = await window.characterApi.save(payload)
+    const saved = await backend.characterApi.save(payload)
     await loadCharacters(activeAccountId, selectedCampaignId)
     openCharacter(saved)
     setShowQuickCreate(false)
-    setQuickName('')
-    setQuickHp(30)
-    setQuickFaction('')
-    setQuickClass('Fighter')
-    setQuickSubclass('')
-    setQuickPreset('frontliner')
-    setAppMessage('Quick character created.')
+    resetQuickWizard()
+    setAppMessage(`Created ${name}. Open the sheet to fine-tune.`)
   }
 
   async function pickCharacterPortrait(): Promise<void> {
     const prev = editor.portraitRelativePath?.trim() ?? ''
-    const result = await window.portraitApi.choose({ characterId: editor.id ?? null })
+    const result = await backend.portraitApi.choose({ characterId: editor.id ?? null })
     if (!result.ok || !result.portraitRelativePath) {
       if (result.message) setAppMessage(result.message)
       return
     }
-    if (prev && prev !== result.portraitRelativePath) await window.portraitApi.remove(prev)
+    if (prev && prev !== result.portraitRelativePath) await backend.portraitApi.remove(prev)
     setEditor((p) => ({ ...p, portraitRelativePath: result.portraitRelativePath ?? '' }))
     setAppMessage('Portrait updated — remember to save the character.')
   }
@@ -728,7 +2304,7 @@ export default function App(): JSX.Element {
   async function clearCharacterPortrait(): Promise<void> {
     const prev = editor.portraitRelativePath?.trim() ?? ''
     if (!prev) return
-    await window.portraitApi.remove(prev)
+    await backend.portraitApi.remove(prev)
     setEditor((p) => ({ ...p, portraitRelativePath: '' }))
     setAppMessage('Portrait removed.')
   }
@@ -741,7 +2317,7 @@ export default function App(): JSX.Element {
       campaignId: selectedCampaignId,
       keywords: parseKeywords(keywordText)
     }
-    const saved = await window.characterApi.save(payload)
+    const saved = await backend.characterApi.save(payload)
     await loadCharacters(activeAccountId, selectedCampaignId)
     openCharacter(saved)
     setAppMessage('Character saved.')
@@ -749,31 +2325,89 @@ export default function App(): JSX.Element {
 
   async function deleteCharacter(): Promise<void> {
     if (!selectedId || !activeAccountId) return
-    await window.characterApi.remove(selectedId)
+    await backend.characterApi.remove(selectedId)
     await loadCharacters(activeAccountId, selectedCampaignId)
     newCharacter()
     setAppMessage('Character deleted.')
   }
 
   async function generateAttacks(): Promise<void> {
-    const result = await window.characterApi.generateAttacks({
+    const preview = previewKeywordAttackBatch({
+      archetype: editor.archetype || editor.dedicatedEssence || 'adventurer',
+      level: Math.max(1, editor.level),
+      keywords: normalizeKeywordInput(keywordText),
+      stats: editor.stats
+    })
+    if (preview.attackCount >= 40) {
+      const ok = window.confirm(
+        `This will add ${preview.attackCount} generated attacks to the list (one per archetype × element pair). Continue?`
+      )
+      if (!ok) return
+    }
+    const batchId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    const result = await backend.characterApi.generateAttacks({
       characterId: editor.id ?? 'draft',
       characterName: editor.name || 'Character',
       archetype: editor.archetype || editor.dedicatedEssence || 'adventurer',
       level: Math.max(1, editor.level),
       keywords: parseKeywords(keywordText),
-      stats: editor.stats
+      stats: editor.stats,
+      batchId
     })
+    setEditor((prev) => {
+      const withoutGen = mergeGeneratedAttacks ? prev.attacks : prev.attacks.filter((attack) => attack.source !== 'generated')
+      return {
+        ...prev,
+        attacks: [...withoutGen, ...result.attacks]
+      }
+    })
+    const noteTail = result.generationNotes.slice(0, 2).join(' ')
+    setAppMessage(
+      `Generated ${result.attacks.length} attack${result.attacks.length === 1 ? '' : 's'}. ${noteTail}`.slice(0, 420)
+    )
+  }
+
+  function addManualAttack(): void {
+    const name = manualAttackDraft.name.trim()
+    if (!name) {
+      setAppMessage('Give the attack a name before adding.')
+      return
+    }
+    const hitParsed = Number.parseInt(manualAttackDraft.hitBonus.trim(), 10)
+    const hitBonus = Number.isFinite(hitParsed) ? hitParsed : 0
+    const id = `manual-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
     setEditor((prev) => ({
       ...prev,
-      attacks: [...prev.attacks.filter((attack) => attack.source !== 'generated'), ...result.attacks]
+      attacks: [
+        ...prev.attacks,
+        {
+          id,
+          name,
+          hitBonus,
+          damageDice: manualAttackDraft.damageDice.trim() || '—',
+          damageType: manualAttackDraft.damageType.trim() || '—',
+          range: manualAttackDraft.range.trim() || '—',
+          tags: ['manual'],
+          description: manualAttackDraft.description.trim(),
+          source: 'manual'
+        }
+      ]
     }))
-    setAppMessage('Generated attacks from keywords.')
+    setManualAttackDraft(emptyManualAttackDraft())
+    setAppMessage(`Added manual attack "${name}".`)
+  }
+
+  function removeAttack(attackId: string): void {
+    setEditor((prev) => ({
+      ...prev,
+      attacks: prev.attacks.filter((attack) => attack.id !== attackId)
+    }))
+    setAppMessage('Removed attack.')
   }
 
   async function createCampaign(): Promise<void> {
     if (!activeAccountId || !newCampaignName.trim()) return
-    const campaign = await window.campaignApi.create({ accountId: activeAccountId, name: newCampaignName.trim() })
+    const campaign = await backend.campaignApi.create({ accountId: activeAccountId, name: newCampaignName.trim() })
     setSelectedCampaignId(campaign.id)
     setNewCampaignName('')
     await loadCampaigns(activeAccountId)
@@ -781,7 +2415,7 @@ export default function App(): JSX.Element {
 
   async function joinCampaign(): Promise<void> {
     if (!activeAccountId || !joinCode.trim()) return
-    const campaign = await window.campaignApi.joinByCode({ accountId: activeAccountId, code: joinCode.trim() })
+    const campaign = await backend.campaignApi.joinByCode({ accountId: activeAccountId, code: joinCode.trim() })
     if (!campaign) {
       setAppMessage('Campaign code not found.')
       return
@@ -795,14 +2429,13 @@ export default function App(): JSX.Element {
 
   async function handleLeaveCampaign(): Promise<void> {
     if (!activeAccountId || !selectedCampaignId) return
-    const result = await window.campaignApi.leave({
+    const result = await backend.campaignApi.leave({
       accountId: activeAccountId,
       campaignId: selectedCampaignId
     })
     setAppMessage(result.message)
     setSelectedCampaignId(null)
-    setWorkspaceTab('sheet')
-    setCampaignMembers([])
+    setWorkspaceTab('home')
     setBattleParticipants([])
     setBattleDrafts({})
     await loadCampaigns(activeAccountId)
@@ -841,6 +2474,16 @@ export default function App(): JSX.Element {
   const dndSpellSaveDc = 8 + dndProf + dndAbilityMod
   const dndSpellAttack = dndProf + dndAbilityMod
 
+  const sheetAttackIntel = useMemo(() => {
+    if (rulesMode !== 'dnd' || workspaceTab !== 'sheet') return null
+    return previewKeywordAttackBatch({
+      archetype: editor.archetype || editor.dedicatedEssence || 'adventurer',
+      level: Math.max(1, editor.level),
+      keywords: normalizeKeywordInput(keywordText),
+      stats: editor.stats
+    })
+  }, [rulesMode, workspaceTab, editor.archetype, editor.dedicatedEssence, editor.level, editor.stats, keywordText])
+
   const loginMutedBtn = useMemo(() => {
     if (colorScheme === 'default') {
       return darkMode
@@ -863,13 +2506,21 @@ export default function App(): JSX.Element {
         ? 'border border-gray-600 bg-gray-700/85 text-gray-100 hover:bg-gray-600/95'
         : 'border border-gray-400/85 bg-white/82 text-gray-800 hover:bg-white'
     }
-    if (colorScheme === 'xmb') {
+    if (colorScheme === 'ps3') {
       return 'border border-slate-600/70 bg-slate-800/65 text-slate-200 hover:bg-slate-700/85'
+    }
+    if (colorScheme === 'xbox360') {
+      return 'border border-zinc-700/75 bg-zinc-900/72 text-zinc-100 hover:bg-zinc-800/88'
     }
     if (colorScheme === 'cube') {
       return darkMode
         ? 'border border-indigo-400/45 bg-indigo-950/60 text-indigo-100 hover:bg-indigo-900/70'
         : 'border border-indigo-400/55 bg-white/90 text-indigo-950 hover:bg-white'
+    }
+    if (colorScheme === 'bee') {
+      return darkMode
+        ? 'border border-amber-500/40 bg-stone-900/75 text-amber-100 hover:bg-stone-900'
+        : 'border border-amber-400/70 bg-amber-50/90 text-amber-950 hover:bg-amber-50'
     }
     if (colorScheme === 'wiiu') {
       return darkMode
@@ -889,112 +2540,139 @@ export default function App(): JSX.Element {
       (
         {
           default: {
-            grad: darkMode ? 'from-slate-950 via-slate-900 to-slate-950' : 'from-slate-50 via-white to-slate-100',
+            grad: darkMode
+              ? 'from-slate-950 via-indigo-950/50 to-slate-950'
+              : 'from-slate-100 via-sky-50 to-indigo-50',
             primary: darkMode
-              ? 'rounded-lg bg-slate-100 text-slate-900 font-semibold border border-slate-300/40 shadow-sm hover:bg-white'
-              : 'rounded-lg bg-slate-900 text-white font-semibold border border-slate-800 shadow-sm hover:bg-slate-800',
+              ? 'rounded-lg bg-sky-500 text-white font-semibold border border-sky-400/50 shadow-[0_0_22px_rgba(56,189,248,0.3)] hover:bg-sky-400'
+              : 'rounded-lg bg-indigo-600 text-white font-semibold border border-indigo-500 shadow-md hover:bg-indigo-500',
             secondary: darkMode
               ? 'rounded-lg bg-slate-800 text-slate-100 font-semibold border border-slate-600/45 shadow-sm hover:bg-slate-700'
-              : 'rounded-lg bg-slate-200 text-slate-900 font-semibold border border-slate-300 shadow-sm hover:bg-slate-100',
-            ring: darkMode ? 'ring-slate-300/55' : 'ring-slate-500/55'
+              : 'rounded-lg bg-white text-indigo-900 font-semibold border border-indigo-200 shadow-sm hover:bg-indigo-50',
+            ring: darkMode ? 'ring-sky-400/60' : 'ring-indigo-400/60'
           },
           violet: {
-            grad: 'from-sky-500 via-teal-500 to-lime-400',
+            grad: 'from-sky-200 via-blue-600 to-teal-400',
             primary:
-              'bg-gradient-to-b from-sky-400 to-sky-700 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] border border-sky-600/40',
+              'bg-gradient-to-b from-sky-200 to-blue-800 text-white font-semibold border-2 border-white/55 shadow-[inset_0_2px_0_rgba(255,255,255,0.55),0_8px_28px_rgba(37,99,235,0.38)]',
             secondary:
-              'bg-gradient-to-b from-teal-400 to-teal-700 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.38)] border border-teal-700/35',
-            ring: 'ring-sky-400/75'
+              'bg-gradient-to-b from-emerald-400 to-teal-900 text-white font-semibold border border-emerald-200/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.42)]',
+            ring: 'ring-sky-300/90'
           },
           teal: {
             grad: darkMode
-              ? 'from-[#000022] via-[#003d5c] to-[#006565]'
-              : 'from-[#000080] via-[#1084d0] to-[#008080]',
+              ? 'from-[#000010] via-[#001a38] to-[#005050]'
+              : 'from-[#000040] via-[#0066cc] to-[#00a8a8]',
             primary: darkMode
               ? 'rounded-md bg-[#6f6f6f] text-white font-semibold shadow-[inset_-1px_-1px_0_#2f2f2f,inset_1px_1px_0_#a0a0a0] border border-black/35'
               : 'rounded-md bg-[#ece9d8] text-[#000060] font-semibold shadow-[inset_-1px_-1px_0_#404040,inset_1px_1px_0_#ffffff] border border-black/25',
             secondary: darkMode
               ? 'rounded-md bg-[#5c5c5c] text-[#ecfeff] font-semibold shadow-[inset_-1px_-1px_0_#252525,inset_1px_1px_0_#888888] border border-black/35'
               : 'rounded-md bg-[#d8d4c8] text-[#003049] font-semibold shadow-[inset_-1px_-1px_0_#505050,inset_1px_1px_0_#ffffff] border border-black/22',
-            ring: 'ring-[#1084d0]/70'
+            ring: 'ring-[#00ffff]/70'
           },
           sunset: {
             grad: darkMode
-              ? 'from-[#3b0764] via-[#86198f] to-[#155e75]'
-              : 'from-[#fffbeb] via-[#fbcfe8] to-[#a5f3fc]',
+              ? 'from-[#240046] via-[#c026d3] to-[#0369a1]'
+              : 'from-[#fff1f2] via-[#fae8ff] to-[#cffafe]',
             primary: darkMode
-              ? 'rounded-xl bg-gradient-to-r from-fuchsia-600 via-purple-600 to-cyan-500 text-white font-semibold border border-fuchsia-400/55 shadow-[0_0_26px_rgba(217,70,239,0.42)]'
-              : 'rounded-xl bg-gradient-to-r from-pink-500 via-fuchsia-600 to-orange-400 text-white font-semibold border-2 border-white/70 shadow-[0_10px_36px_rgba(219,39,119,0.35)]',
+              ? 'rounded-xl bg-gradient-to-r from-fuchsia-500 via-fuchsia-700 to-cyan-400 text-white font-semibold border-2 border-fuchsia-200/55 shadow-[0_0_36px_rgba(217,70,239,0.6)]'
+              : 'rounded-xl bg-gradient-to-r from-rose-500 via-fuchsia-600 to-amber-400 text-white font-semibold border-2 border-yellow-200 shadow-[0_12px_40px_rgba(236,72,153,0.45)]',
             secondary: darkMode
-              ? 'rounded-xl bg-gradient-to-r from-cyan-500 to-teal-500 text-white font-semibold border border-cyan-300/40 shadow-[0_0_22px_rgba(34,211,238,0.35)]'
-              : 'rounded-xl bg-gradient-to-r from-sky-400 to-violet-600 text-white font-semibold border-2 border-cyan-200/80 shadow-lg',
-            ring: 'ring-fuchsia-400/75'
+              ? 'rounded-xl bg-gradient-to-r from-cyan-400 to-fuchsia-600 text-white font-semibold border border-cyan-200/45 shadow-[0_0_26px_rgba(34,211,238,0.45)]'
+              : 'rounded-xl bg-gradient-to-r from-violet-500 to-sky-500 text-white font-semibold border-2 border-white/80 shadow-lg',
+            ring: 'ring-fuchsia-400/90'
           },
           wii: {
-            grad: darkMode ? 'from-[#353943] via-[#4a505c] to-[#252830]' : 'from-[#f4f6fa] via-[#dce2ec] to-[#b9c2d1]',
+            grad: darkMode ? 'from-[#1e2430] via-[#334155] to-[#0f1419]' : 'from-[#f8fafc] via-[#cbd5e1] to-[#94a3b8]',
             primary:
-              'rounded-2xl bg-gradient-to-b from-[#7dd3fc] to-[#0284c7] text-white font-semibold border border-white/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_10px_28px_rgba(2,132,199,0.35)]',
+              'rounded-2xl bg-gradient-to-b from-sky-200 to-blue-600 text-white font-semibold border-2 border-white/70 shadow-[inset_0_2px_0_rgba(255,255,255,0.65),0_12px_32px_rgba(2,132,199,0.45)]',
             secondary:
-              'rounded-2xl bg-gradient-to-b from-[#94a3b8] to-[#475569] text-white font-semibold border border-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]',
-            ring: 'ring-sky-400/80'
+              'rounded-2xl bg-gradient-to-b from-slate-300 to-slate-600 text-white font-semibold border border-white/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]',
+            ring: 'ring-sky-300/90'
           },
-          xmb: {
-            grad: 'from-[#0c1628] via-[#152238] to-[#050910]',
+          ps3: {
+            grad: 'from-[#010208] via-[#0a1628] to-[#020617]',
             primary:
-              'rounded-lg bg-gradient-to-r from-sky-400 to-blue-700 text-white font-semibold border border-sky-300/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_0_24px_rgba(56,189,248,0.22)]',
+              'rounded-lg bg-gradient-to-r from-sky-300 to-indigo-800 text-white font-semibold border border-sky-200/40 shadow-[0_0_26px_rgba(56,189,248,0.45)]',
             secondary:
-              'rounded-lg bg-gradient-to-b from-slate-600 to-slate-900 text-slate-50 font-semibold border border-slate-500/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]',
-            ring: 'ring-sky-400/70'
+              'rounded-lg bg-gradient-to-b from-slate-500 to-black text-slate-50 font-semibold border border-slate-400/50 shadow-[inset_0_1px_0_rgba(255,255,255,0.15)]',
+            ring: 'ring-sky-300/80'
+          },
+          xbox360: {
+            grad: 'from-[#0a0a0a] via-[#171717] to-[#030303]',
+            primary:
+              'rounded-lg bg-gradient-to-r from-lime-300 via-lime-500 to-green-800 text-black font-bold border border-lime-200/50 shadow-[0_0_24px_rgba(132,204,22,0.42)]',
+            secondary:
+              'rounded-lg bg-gradient-to-b from-zinc-600 to-black text-zinc-50 font-semibold border border-zinc-500/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]',
+            ring: 'ring-lime-400/75'
           },
           cube: {
             grad: darkMode
-              ? 'from-[#060a19] via-[#1e3a8a] to-[#0f172a]'
-              : 'from-[#1e3a8a] via-[#3730a3] to-[#0f172a]',
+              ? 'from-[#050816] via-[#1e1b4b] to-[#020617]'
+              : 'from-[#312e81] via-[#6366f1] to-[#0f172a]',
             primary:
-              'rounded-xl bg-gradient-to-r from-indigo-300 via-slate-100 to-indigo-200 text-indigo-950 font-bold border border-white/80 shadow-[0_0_28px_rgba(129,140,248,0.32)]',
+              'rounded-xl bg-gradient-to-r from-orange-200 via-white to-indigo-200 text-indigo-950 font-bold border-2 border-orange-200/85 shadow-[0_0_36px_rgba(251,146,60,0.28)]',
             secondary:
-              'rounded-xl bg-gradient-to-r from-indigo-700 to-slate-900 text-slate-100 font-semibold border border-indigo-300/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]',
-            ring: 'ring-indigo-300/80'
+              'rounded-xl bg-gradient-to-r from-indigo-950 to-violet-950 text-violet-100 font-semibold border border-indigo-400/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]',
+            ring: 'ring-orange-300/80'
+          },
+          bee: {
+            grad: darkMode
+              ? 'from-[#0c0a09] via-[#422006] to-[#1c1917]'
+              : 'from-[#fffbeb] via-[#fde68a] to-[#f59e0b]',
+            primary: darkMode
+              ? 'rounded-2xl bg-gradient-to-r from-amber-400 via-amber-500 to-orange-800 text-stone-950 font-bold border-2 border-amber-200/55 shadow-[0_0_30px_rgba(251,191,36,0.35)]'
+              : 'rounded-2xl bg-gradient-to-r from-amber-300 via-yellow-300 to-amber-600 text-stone-950 font-bold border-2 border-amber-900/20 shadow-[0_14px_40px_rgba(245,158,11,0.35)]',
+            secondary: darkMode
+              ? 'rounded-2xl bg-gradient-to-br from-stone-800 to-stone-950 text-amber-50 font-semibold border border-amber-500/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]'
+              : 'rounded-2xl bg-gradient-to-br from-white to-amber-100 text-amber-950 font-semibold border border-amber-300/70 shadow-md',
+            ring: 'ring-amber-400/85'
           },
           wiiu: {
-            grad: darkMode ? 'from-[#031525] via-[#0f2f3d] to-[#111827]' : 'from-[#e0f7ff] via-[#dbeafe] to-[#cffafe]',
+            grad: darkMode ? 'from-[#020a12] via-[#082f49] to-[#020617]' : 'from-[#f0fdfa] via-[#a5f3fc] to-[#e0f2fe]',
             primary:
-              'rounded-xl bg-gradient-to-r from-cyan-400 to-blue-600 text-white font-semibold border border-cyan-200/60 shadow-[0_8px_24px_rgba(14,116,144,0.28)]',
+              'rounded-xl bg-gradient-to-r from-teal-300 via-cyan-400 to-blue-600 text-white font-semibold border-2 border-white/60 shadow-[0_10px_32px_rgba(6,182,212,0.4)]',
             secondary:
-              'rounded-xl bg-gradient-to-r from-slate-500 to-slate-700 text-white font-semibold border border-slate-300/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]',
-            ring: 'ring-cyan-300/75'
+              'rounded-xl bg-gradient-to-r from-slate-600 to-slate-900 text-white font-semibold border border-cyan-300/30 shadow-[inset_0_1px_0_rgba(255,255,255,0.18)]',
+            ring: 'ring-teal-300/85'
           },
           '3ds': {
-            grad: darkMode ? 'from-[#3f0a0a] via-[#18181b] to-[#7f1d1d]' : 'from-[#fff1f2] via-[#ffe4e6] to-[#fee2e2]',
+            grad: darkMode ? 'from-[#450a0a] via-[#18181b] to-[#881337]' : 'from-[#ffe4e6] via-[#fda4af] to-[#fecdd3]',
             primary:
-              'rounded-md bg-gradient-to-b from-rose-500 to-rose-700 text-white font-semibold border border-rose-300/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]',
+              'rounded-md bg-gradient-to-b from-rose-400 to-rose-900 text-white font-semibold border-2 border-rose-200/70 shadow-[inset_0_2px_0_rgba(255,255,255,0.45)]',
             secondary:
-              'rounded-md bg-gradient-to-b from-zinc-500 to-zinc-700 text-white font-semibold border border-zinc-300/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]',
-            ring: 'ring-rose-300/75'
+              'rounded-md bg-gradient-to-b from-zinc-600 to-zinc-900 text-white font-semibold border border-rose-300/40 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]',
+            ring: 'ring-rose-400/85'
           }
         } as const
       )[colorScheme],
     [colorScheme, darkMode]
   )
 
+  const useShapeSoft = cornerStyle === 'soft' || cornerStyle === 'organic'
+  const useEraClips = cornerStyle === 'era'
+
   const headerChrome = useMemo(() => {
     if (colorScheme === 'default') {
       return cn(
-        'relative mb-6 rounded-2xl border p-5 motion-safe:animate-ecs-fade-up',
+        'relative mb-6 rounded-2xl border-2 p-5 motion-safe:animate-ecs-fade-up',
         darkMode
-          ? 'border-slate-700 bg-slate-900 text-slate-100 shadow-sm'
-          : 'border-slate-200 bg-white text-slate-900 shadow-sm'
+          ? 'border-sky-900/40 bg-gradient-to-br from-slate-900 via-slate-950 to-indigo-950 text-slate-100 shadow-[0_0_28px_rgba(56,189,248,0.12)]'
+          : 'border-indigo-200 bg-gradient-to-br from-white via-sky-50/80 to-indigo-50 text-slate-900 shadow-md'
       )
     }
     if (colorScheme === 'teal') {
       return cn(
-        'ecs-win98-window relative mb-6 rounded-md border border-black/55 p-5 pt-6 motion-safe:animate-ecs-fade-up',
+        'ecs-win98-window relative mb-6 rounded-none border border-black/55 p-5 pt-6 motion-safe:animate-ecs-fade-up',
         darkMode ? 'border-black/60 bg-[#545454] text-zinc-100 shadow-[4px_4px_0_rgba(0,0,0,0.35)]' : 'bg-[#ece9d8] text-gray-900 shadow-[4px_4px_0_rgba(0,0,0,0.12)]'
       )
     }
     if (colorScheme === 'sunset') {
       return cn(
-        'ecs-shape-banner relative mb-6 rounded-[1.35rem] border-2 p-5 backdrop-blur-md motion-safe:animate-ecs-fade-up ecs-header-y2k',
+        useEraClips
+          ? 'ecs-shape-banner relative mb-6 border-2 p-5 backdrop-blur-md motion-safe:animate-ecs-fade-up ecs-header-y2k'
+          : 'relative mb-6 rounded-[1.35rem] border-2 p-5 backdrop-blur-md motion-safe:animate-ecs-fade-up ecs-header-y2k',
         darkMode
           ? 'border-cyan-400/50 bg-slate-950/88 text-slate-100 shadow-[0_0_38px_rgba(34,211,238,0.14)]'
           : 'border-pink-400/80 bg-gradient-to-br from-amber-50 via-white to-fuchsia-100 text-indigo-950 shadow-xl'
@@ -1002,29 +2680,43 @@ export default function App(): JSX.Element {
     }
     if (colorScheme === 'wii') {
       return cn(
-        'relative mb-6 rounded-[2rem] border p-5 motion-safe:animate-ecs-fade-up backdrop-blur-md',
+        'relative mb-6 rounded-[2rem] border-2 p-5 motion-safe:animate-ecs-fade-up backdrop-blur-md',
         darkMode
-          ? 'border-gray-600/55 bg-gray-800/92 text-gray-100 shadow-[0_14px_44px_rgba(0,0,0,0.38)]'
-          : 'border-white/75 bg-white/88 text-gray-900 shadow-[0_16px_48px_rgba(15,23,42,0.08)]'
+          ? 'border-sky-800/50 bg-gradient-to-b from-slate-800 to-slate-950 text-gray-100 shadow-[0_16px_48px_rgba(0,0,0,0.5)]'
+          : 'border-sky-200 bg-gradient-to-b from-white via-sky-50/90 to-slate-200/90 text-gray-900 shadow-[0_18px_50px_rgba(14,165,233,0.2)]'
       )
     }
-    if (colorScheme === 'xmb') {
+    if (colorScheme === 'ps3') {
       return cn(
-        'relative mb-6 rounded-xl border border-slate-700/60 bg-gradient-to-b from-slate-900/96 to-slate-950/98 p-5 text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] motion-safe:animate-ecs-fade-up',
-        !darkMode && 'from-slate-800/96 to-slate-900/98 text-slate-50'
+        'relative mb-6 rounded-xl border-2 border-sky-500/40 bg-gradient-to-b from-slate-800/98 via-slate-950 to-black p-5 text-slate-100 shadow-[0_0_32px_rgba(56,189,248,0.25),inset_0_1px_0_rgba(255,255,255,0.08)] motion-safe:animate-ecs-fade-up',
+        !darkMode && 'from-slate-700/98 to-slate-900 text-slate-50'
+      )
+    }
+    if (colorScheme === 'xbox360') {
+      return cn(
+        'relative mb-6 rounded-lg border-2 border-lime-600/35 bg-gradient-to-b from-zinc-900/98 via-black to-zinc-950 p-5 text-zinc-100 shadow-[0_0_28px_rgba(74,222,128,0.22),inset_0_1px_0_rgba(255,255,255,0.06)] motion-safe:animate-ecs-fade-up',
+        !darkMode && 'from-zinc-800/98 to-black text-zinc-50'
       )
     }
     if (colorScheme === 'cube') {
       return cn(
-        'relative mb-6 rounded-[1.1rem] border border-indigo-300/35 bg-gradient-to-r from-[#1f2a44]/96 via-[#1e3a8a]/82 to-[#0f172a]/94 p-5 text-slate-100 shadow-[0_0_26px_rgba(129,140,248,0.2)] motion-safe:animate-ecs-fade-up'
+        'relative mb-6 rounded-[1.1rem] border-2 border-orange-400/35 bg-gradient-to-r from-[#1e1033]/98 via-indigo-900/95 to-[#020617]/98 p-5 text-slate-100 shadow-[0_0_34px_rgba(129,140,248,0.22)] motion-safe:animate-ecs-fade-up'
+      )
+    }
+    if (colorScheme === 'bee') {
+      return cn(
+        'relative mb-6 rounded-[1.6rem] border-2 p-5 backdrop-blur-md motion-safe:animate-ecs-fade-up',
+        darkMode
+          ? 'border-amber-500/40 bg-gradient-to-br from-stone-950 via-amber-950/35 to-stone-950 text-amber-50 shadow-[0_0_30px_rgba(245,158,11,0.18)]'
+          : 'border-amber-300/80 bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-100 text-amber-950 shadow-xl'
       )
     }
     if (colorScheme === 'wiiu') {
       return cn(
-        'relative mb-6 rounded-2xl border p-5 backdrop-blur-md motion-safe:animate-ecs-fade-up',
+        'relative mb-6 rounded-2xl border-2 p-5 backdrop-blur-md motion-safe:animate-ecs-fade-up',
         darkMode
-          ? 'border-cyan-400/40 bg-slate-900/88 text-cyan-50 shadow-[0_10px_35px_rgba(6,78,99,0.32)]'
-          : 'border-cyan-200/80 bg-white/90 text-cyan-900 shadow-[0_10px_30px_rgba(14,116,144,0.12)]'
+          ? 'border-teal-400/50 bg-gradient-to-br from-slate-950 via-cyan-950/40 to-slate-900 text-cyan-50 shadow-[0_12px_40px_rgba(6,182,212,0.35)]'
+          : 'border-cyan-300 bg-gradient-to-br from-white via-cyan-50 to-sky-100 text-cyan-950 shadow-[0_12px_36px_rgba(14,116,144,0.22)]'
       )
     }
     if (colorScheme === '3ds') {
@@ -1035,74 +2727,96 @@ export default function App(): JSX.Element {
           : 'border-rose-300/80 bg-white/94 text-rose-900 shadow-[0_8px_22px_rgba(244,63,94,0.15)]'
       )
     }
-    return 'ecs-shape-banner ecs-diagonal-strip relative mb-6 rounded-[1.75rem] border border-cyan-300/55 bg-white/82 p-5 shadow-aero-float backdrop-blur-md motion-safe:animate-ecs-fade-up dark:border-teal-800/55 dark:bg-slate-900/78'
-  }, [colorScheme, darkMode])
+    return useShapeSoft
+      ? 'ecs-diagonal-strip relative mb-6 rounded-[1.75rem] border-2 border-cyan-400/70 bg-gradient-to-br from-white/95 via-sky-100/90 to-cyan-50/85 p-5 shadow-[0_12px_40px_rgba(14,165,233,0.25)] backdrop-blur-md motion-safe:animate-ecs-fade-up dark:border-teal-500/50 dark:from-slate-950 dark:via-slate-900 dark:to-teal-950/80'
+      : 'ecs-shape-banner ecs-diagonal-strip relative mb-6 rounded-[1.75rem] border-2 border-cyan-400/70 bg-gradient-to-br from-white/95 via-sky-100/90 to-cyan-50/85 p-5 shadow-[0_12px_40px_rgba(14,165,233,0.25)] backdrop-blur-md motion-safe:animate-ecs-fade-up dark:border-teal-500/50 dark:from-slate-950 dark:via-slate-900 dark:to-teal-950/80'
+  }, [colorScheme, darkMode, useShapeSoft, useEraClips])
 
   const cardClass =
-    visualStyle === 'parchment'
-      ? 'ecs-shape-card ecs-shape-soft motion-safe:transition-shadow motion-safe:duration-300 motion-safe:hover:shadow-lg motion-safe:hover:ring-1 motion-safe:hover:ring-amber-400/25 dark:motion-safe:hover:ring-amber-500/20 border-amber-300/70 bg-amber-50/95 dark:border-amber-600/30 dark:bg-[#302519] dark:text-amber-50'
-      : colorScheme === 'default'
+    colorScheme === 'default'
+      ? cn(
+          'motion-safe:transition-shadow motion-safe:duration-300 rounded-xl',
+          darkMode
+            ? 'border border-sky-900/30 bg-gradient-to-br from-slate-900 to-slate-950 text-slate-100 shadow-[0_0_20px_rgba(56,189,248,0.08)]'
+            : 'border border-indigo-200/80 bg-gradient-to-br from-white to-sky-50/90 text-slate-900 shadow-md'
+        )
+      : colorScheme === 'violet'
         ? cn(
-            'motion-safe:transition-shadow motion-safe:duration-300 rounded-xl',
-            darkMode
-              ? 'border border-slate-700 bg-slate-900 text-slate-100 shadow-sm'
-              : 'border border-slate-200 bg-white text-slate-900 shadow-sm'
+            'ecs-shape-card motion-safe:transition-shadow motion-safe:duration-300 motion-safe:hover:shadow-lg motion-safe:hover:ring-2 motion-safe:hover:ring-cyan-300/70 dark:motion-safe:hover:ring-teal-500/50 border-2 border-sky-300/80 bg-gradient-to-br from-white/95 via-cyan-50/90 to-sky-100/85 text-slate-900 shadow-[0_12px_36px_rgba(14,165,233,0.2)] backdrop-blur-md dark:border-teal-600/50 dark:from-slate-950 dark:via-slate-900 dark:to-teal-950/90 dark:text-slate-100 dark:shadow-[0_12px_40px_rgba(0,0,0,0.45)]',
+            useShapeSoft && 'ecs-shape-soft'
           )
-        : colorScheme === 'violet'
-        ? 'ecs-shape-card ecs-shape-soft motion-safe:transition-shadow motion-safe:duration-300 motion-safe:hover:shadow-lg motion-safe:hover:ring-1 motion-safe:hover:ring-cyan-300/55 dark:motion-safe:hover:ring-teal-600/45 border-cyan-200/75 bg-white/88 shadow-aero-card backdrop-blur-md dark:border-teal-900/55 dark:bg-slate-900/88 dark:shadow-aero-card-dark'
         : colorScheme === 'teal'
-          ? 'ecs-shape-card ecs-shape-soft ecs-panel-teal motion-safe:transition-[filter] motion-safe:duration-200 hover:brightness-[1.02]'
+          ? 'ecs-shape-card ecs-panel-teal motion-safe:transition-[filter] motion-safe:duration-200 hover:brightness-[1.02]'
           : colorScheme === 'sunset'
             ? cn(
-                'ecs-shape-card ecs-shape-soft motion-safe:transition-shadow motion-safe:duration-300 backdrop-blur-md',
+                'ecs-shape-card motion-safe:transition-shadow motion-safe:duration-300 backdrop-blur-md',
+                useShapeSoft && 'ecs-shape-soft',
                 darkMode
-                  ? 'border-2 border-fuchsia-500/55 bg-slate-950/93 text-slate-100 shadow-[0_0_28px_rgba(217,70,239,0.22),inset_0_1px_0_rgba(255,255,255,0.06)]'
-                  : 'border-2 border-pink-400/90 bg-amber-50/96 text-indigo-950 shadow-[0_12px_40px_rgba(236,72,153,0.22)]'
+                  ? 'border-2 border-fuchsia-400/70 bg-gradient-to-br from-slate-950 via-fuchsia-950/30 to-slate-950 text-slate-100 shadow-[0_0_36px_rgba(217,70,239,0.35)]'
+                  : 'border-2 border-fuchsia-400 bg-gradient-to-br from-amber-50 via-fuchsia-50 to-cyan-50 text-indigo-950 shadow-[0_14px_44px_rgba(236,72,153,0.28)]'
               )
-            : colorScheme === 'wii'
+              : colorScheme === 'wii'
               ? cn(
                   'motion-safe:transition-shadow motion-safe:duration-300 rounded-[1.75rem] backdrop-blur-md',
                   darkMode
-                    ? 'border border-gray-600/65 bg-gray-800/93 shadow-[0_16px_48px_rgba(0,0,0,0.4)]'
-                    : 'border border-white/85 bg-white/93 shadow-[0_18px_52px_rgba(15,23,42,0.07)]'
+                    ? 'border-2 border-sky-700/50 bg-gradient-to-b from-slate-800 to-slate-950 shadow-[0_16px_48px_rgba(0,0,0,0.5)]'
+                    : 'border-2 border-sky-200 bg-gradient-to-b from-white via-sky-50 to-slate-200 shadow-[0_18px_52px_rgba(14,165,233,0.18)]'
                 )
-              : colorScheme === 'xmb'
+              : colorScheme === 'ps3'
                 ? cn(
                     'motion-safe:transition-shadow motion-safe:duration-300 rounded-xl backdrop-blur-md',
                     darkMode
-                      ? 'border border-slate-600/55 bg-slate-900/94 text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_12px_38px_rgba(0,0,0,0.42)]'
-                      : 'border border-slate-600/50 bg-slate-800/93 text-slate-100 shadow-[0_14px_40px_rgba(15,23,42,0.32)]'
+                      ? 'border-2 border-sky-500/40 bg-gradient-to-b from-slate-900 to-black text-slate-100 shadow-[0_0_32px_rgba(56,189,248,0.2)]'
+                      : 'border-2 border-slate-500 bg-gradient-to-b from-slate-700 to-slate-900 text-slate-100 shadow-xl'
                   )
+                : colorScheme === 'xbox360'
+                  ? cn(
+                      'motion-safe:transition-shadow motion-safe:duration-300 rounded-lg backdrop-blur-md',
+                      darkMode
+                        ? 'border-2 border-lime-600/35 bg-gradient-to-b from-zinc-900 to-black text-zinc-100 shadow-[0_0_30px_rgba(74,222,128,0.18)]'
+                        : 'border-2 border-zinc-600 bg-gradient-to-b from-zinc-800 to-black text-zinc-100 shadow-xl'
+                    )
                 : colorScheme === 'cube'
                   ? cn(
                       'motion-safe:transition-shadow motion-safe:duration-300 rounded-xl backdrop-blur-md',
                       darkMode
-                        ? 'border border-indigo-400/45 bg-[#111827]/96 text-slate-100 shadow-[0_0_28px_rgba(99,102,241,0.18)]'
-                        : 'border border-indigo-300/55 bg-gradient-to-br from-slate-100 via-white to-indigo-100 text-indigo-950 shadow-[0_14px_42px_rgba(30,64,175,0.14)]'
+                        ? 'border-2 border-indigo-400/35 bg-gradient-to-br from-[#0f0720] via-indigo-950 to-black text-slate-100 shadow-[0_0_32px_rgba(99,102,241,0.18)]'
+                        : 'border-2 border-indigo-400 bg-gradient-to-br from-indigo-50 via-white to-orange-50 text-indigo-950 shadow-[0_16px_44px_rgba(79,70,229,0.2)]'
                     )
+                  : colorScheme === 'bee'
+                    ? cn(
+                        'motion-safe:transition-shadow motion-safe:duration-300 rounded-2xl backdrop-blur-md',
+                        darkMode
+                          ? 'border-2 border-amber-500/45 bg-gradient-to-br from-stone-950 via-amber-950/25 to-stone-950 text-amber-50 shadow-[0_0_28px_rgba(245,158,11,0.2)]'
+                          : 'border-2 border-amber-300/90 bg-gradient-to-br from-amber-50 via-yellow-50 to-amber-100 text-amber-950 shadow-[0_14px_40px_rgba(245,158,11,0.22)]'
+                      )
                   : colorScheme === 'wiiu'
                     ? cn(
                         'motion-safe:transition-shadow motion-safe:duration-300 rounded-2xl backdrop-blur-md',
                         darkMode
-                          ? 'border border-cyan-500/45 bg-slate-900/94 text-cyan-50 shadow-[0_0_26px_rgba(34,211,238,0.16)]'
-                          : 'border border-cyan-200/85 bg-white/94 text-cyan-900 shadow-[0_12px_36px_rgba(14,116,144,0.12)]'
+                          ? 'border-2 border-teal-400/50 bg-gradient-to-br from-slate-950 via-cyan-950/50 to-slate-900 text-cyan-50 shadow-[0_0_28px_rgba(34,211,238,0.22)]'
+                          : 'border-2 border-cyan-300 bg-gradient-to-br from-white via-cyan-50 to-sky-100 text-cyan-950 shadow-[0_14px_40px_rgba(14,116,144,0.18)]'
                       )
                     : cn(
-                    'motion-safe:transition-shadow motion-safe:duration-300 rounded-xl backdrop-blur-md',
-                    darkMode
-                      ? 'border border-rose-500/40 bg-zinc-900/96 text-rose-50 shadow-[0_0_24px_rgba(225,29,72,0.18)]'
-                      : 'border border-rose-300/80 bg-rose-50/95 text-rose-900 shadow-[0_12px_34px_rgba(244,63,94,0.14)]'
-                    )
+                          'motion-safe:transition-shadow motion-safe:duration-300 rounded-xl backdrop-blur-md',
+                          darkMode
+                            ? 'border-2 border-rose-500/50 bg-gradient-to-b from-zinc-950 via-rose-950/40 to-black text-rose-50 shadow-[0_0_28px_rgba(244,63,94,0.25)]'
+                            : 'border-2 border-rose-300 bg-gradient-to-b from-rose-50 via-pink-100 to-rose-100 text-rose-950 shadow-[0_12px_36px_rgba(244,63,94,0.2)]'
+                        )
+
+  const workspaceShellRound = colorScheme === 'teal' ? 'rounded-sm' : 'rounded-3xl'
 
   const shellText = useMemo(() => {
     if (colorScheme === 'default') return darkMode ? 'text-slate-100' : 'text-slate-900'
     if (colorScheme === 'teal') return darkMode ? 'text-zinc-100' : 'text-gray-900'
     if (colorScheme === 'sunset') return darkMode ? 'text-slate-100' : 'text-indigo-950'
     if (colorScheme === 'wii') return darkMode ? 'text-gray-100' : 'text-gray-900'
-    if (colorScheme === 'xmb') return 'text-slate-100'
+    if (colorScheme === 'ps3' || colorScheme === 'xbox360') return colorScheme === 'xbox360' ? 'text-zinc-100' : 'text-slate-100'
     if (colorScheme === 'cube') return darkMode ? 'text-slate-100' : 'text-indigo-950'
+    if (colorScheme === 'bee') return darkMode ? 'text-amber-50' : 'text-amber-950'
     if (colorScheme === 'wiiu') return darkMode ? 'text-cyan-50' : 'text-cyan-900'
     if (colorScheme === '3ds') return darkMode ? 'text-rose-50' : 'text-rose-900'
+    if (colorScheme === 'violet') return 'text-slate-900 dark:text-slate-100'
     return 'text-slate-900 dark:text-slate-100'
   }, [colorScheme, darkMode])
 
@@ -1120,12 +2834,18 @@ export default function App(): JSX.Element {
             ? darkMode
               ? 'text-gray-400'
               : 'text-gray-600'
-            : colorScheme === 'xmb'
+            : colorScheme === 'ps3'
               ? 'text-slate-400'
+              : colorScheme === 'xbox360'
+                ? 'text-zinc-400'
               : colorScheme === 'cube'
                 ? darkMode
                   ? 'text-slate-300'
                   : 'text-indigo-900/75'
+                : colorScheme === 'bee'
+                  ? darkMode
+                    ? 'text-amber-200/85'
+                    : 'text-amber-900/80'
                 : colorScheme === 'wiiu'
                   ? darkMode
                     ? 'text-cyan-200/80'
@@ -1134,7 +2854,7 @@ export default function App(): JSX.Element {
                     ? darkMode
                       ? 'text-rose-200/80'
                       : 'text-rose-900/75'
-                : 'text-slate-500 dark:text-slate-400',
+                    : 'text-slate-500 dark:text-slate-400',
     [colorScheme, darkMode]
   )
 
@@ -1174,6 +2894,13 @@ export default function App(): JSX.Element {
         body: 'text-rose-900/85 drop-shadow-none'
       }
     }
+    if (!darkMode && colorScheme === 'bee') {
+      return {
+        badge: 'text-amber-900/90',
+        title: 'text-amber-950 drop-shadow-none',
+        body: 'text-amber-900/85 drop-shadow-none'
+      }
+    }
     return {
       badge: 'text-white/85',
       title: 'drop-shadow-md',
@@ -1186,8 +2913,10 @@ export default function App(): JSX.Element {
     if (colorScheme === 'teal') return 'text-gray-600 dark:text-gray-400'
     if (colorScheme === 'sunset') return 'text-slate-600 dark:text-slate-400'
     if (colorScheme === 'wii') return 'text-gray-600 dark:text-gray-400'
-    if (colorScheme === 'xmb') return 'text-slate-400'
+    if (colorScheme === 'ps3') return 'text-slate-400'
+    if (colorScheme === 'xbox360') return 'text-lime-200/65 dark:text-zinc-400'
     if (colorScheme === 'cube') return 'text-slate-300/90 dark:text-slate-300/90'
+    if (colorScheme === 'bee') return 'text-amber-800 dark:text-amber-200/90'
     if (colorScheme === 'wiiu') return 'text-cyan-700 dark:text-cyan-200'
     if (colorScheme === '3ds') return 'text-rose-700 dark:text-rose-200'
     return 'text-slate-500 dark:text-slate-400'
@@ -1198,13 +2927,18 @@ export default function App(): JSX.Element {
     if (colorScheme === 'default') return 'max-w-7xl px-5 py-7'
     if (colorScheme === 'wiiu') return 'max-w-[88rem] px-6 py-8'
     if (colorScheme === '3ds') return 'max-w-3xl px-4 py-6'
-    if (colorScheme === 'xmb') return 'max-w-[84rem] px-6 py-7'
+    if (isPs3OrXbox360(colorScheme)) return 'max-w-[84rem] px-6 py-7'
     if (colorScheme === 'sunset') return 'max-w-5xl px-5 py-7'
     if (colorScheme === 'cube') return 'max-w-6xl px-5 py-7'
+    if (colorScheme === 'bee') return 'max-w-[82rem] px-6 py-8'
     return 'max-w-7xl px-5 py-7'
   }, [colorScheme, useThemeLayout])
 
-  const workspaceGridClass = 'ecs-workspace-grid motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:110ms]'
+  const workspaceGridClass = cn(
+    'ecs-workspace-grid motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:110ms]',
+    chromeWeight === 'light' && 'ecs-chrome-grid--light',
+    chromeWeight === 'heavy' && 'ecs-chrome-grid--heavy'
+  )
 
   const characterRowSelected = useMemo(
     () =>
@@ -1216,10 +2950,14 @@ export default function App(): JSX.Element {
           ? 'border-[#000080] bg-[#000080] text-white shadow-[inset_2px_2px_6px_rgba(0,0,0,0.35)] dark:border-[#7cb9ff] dark:bg-[#003366] dark:text-white'
           : colorScheme === 'wii'
             ? 'border-sky-500 bg-white shadow-[0_8px_22px_rgba(14,165,233,0.22)] dark:border-sky-400 dark:bg-gray-700/90 dark:text-gray-50 dark:shadow-[0_8px_24px_rgba(56,189,248,0.18)]'
-            : colorScheme === 'xmb'
+            : colorScheme === 'ps3'
               ? 'border-sky-400 bg-slate-800/95 text-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_18px_rgba(56,189,248,0.2)]'
-              : colorScheme === 'cube'
+              : colorScheme === 'xbox360'
+                ? 'border-lime-500/50 bg-zinc-900/95 text-zinc-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.06),0_0_18px_rgba(74,222,128,0.18)]'
+                : colorScheme === 'cube'
                 ? 'border-indigo-300 bg-slate-100/90 text-indigo-950 shadow-[0_0_20px_rgba(129,140,248,0.2)] dark:border-indigo-300 dark:bg-slate-800/85 dark:text-slate-100'
+                : colorScheme === 'bee'
+                  ? 'border-amber-400 bg-amber-50 text-amber-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_0_18px_rgba(245,158,11,0.2)] dark:border-amber-400 dark:bg-amber-950/30 dark:text-amber-50'
                 : colorScheme === 'wiiu'
                   ? 'border-cyan-300 bg-cyan-50 text-cyan-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-cyan-300 dark:bg-cyan-950/35 dark:text-cyan-50'
                   : colorScheme === '3ds'
@@ -1240,10 +2978,14 @@ export default function App(): JSX.Element {
           ? 'rounded-md border border-black/35 bg-[#ece9d8] px-3 py-1 text-xs font-medium text-gray-900 shadow-[inset_-1px_-1px_0_#404040,inset_1px_1px_0_#ffffff] motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.02] dark:bg-[#5a5a5a] dark:text-gray-100 dark:shadow-[inset_-1px_-1px_0_#222,inset_1px_1px_0_#888]'
           : colorScheme === 'wii'
             ? 'rounded-full border border-gray-400/60 bg-white/92 px-3 py-1 text-xs text-gray-800 shadow-sm motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03] dark:border-gray-600 dark:bg-gray-700/90 dark:text-gray-100'
-            : colorScheme === 'xmb'
+            : colorScheme === 'ps3'
               ? 'rounded-md border border-slate-600 bg-slate-800/90 px-3 py-1 text-xs text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.02]'
-              : colorScheme === 'cube'
+              : colorScheme === 'xbox360'
+                ? 'rounded-md border border-zinc-600 bg-zinc-900/90 px-3 py-1 text-xs text-zinc-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_0_1px_rgba(74,222,128,0.12)] motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.02]'
+                : colorScheme === 'cube'
                 ? 'rounded-full border border-indigo-300/60 bg-white/90 px-3 py-1 text-xs text-indigo-950 shadow-[0_0_14px_rgba(129,140,248,0.16)] motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03] dark:border-indigo-300/65 dark:bg-slate-800/80 dark:text-slate-100'
+                : colorScheme === 'bee'
+                  ? 'rounded-full border border-amber-400/70 bg-amber-50/95 px-3 py-1 text-xs text-amber-950 shadow-[0_0_14px_rgba(245,158,11,0.2)] motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03] dark:border-amber-400/55 dark:bg-stone-900/85 dark:text-amber-50'
                 : colorScheme === 'wiiu'
                   ? 'rounded-full border border-cyan-300/65 bg-white/90 px-3 py-1 text-xs text-cyan-900 shadow-sm motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03] dark:border-cyan-300/60 dark:bg-cyan-950/45 dark:text-cyan-50'
                   : colorScheme === '3ds'
@@ -1264,7 +3006,9 @@ export default function App(): JSX.Element {
         : 'rounded-2xl border border-slate-200 bg-white p-4 shadow-md motion-safe:animate-ecs-fade-up'
     }
     if (colorScheme === 'teal') {
-      return 'rounded-lg border border-black/55 bg-[#c0c0c0]/88 p-4 shadow-[8px_8px_0_rgba(0,0,0,0.14)] motion-safe:animate-ecs-fade-up dark:border-black/65 dark:bg-[#404040]/92 dark:shadow-[6px_6px_0_rgba(0,0,0,0.45)]'
+      return cn(
+        'flex min-h-0 flex-col overflow-hidden rounded-lg border border-black/55 bg-[#c0c0c0]/92 shadow-[8px_8px_0_rgba(0,0,0,0.14)] motion-safe:animate-ecs-fade-up dark:border-black/65 dark:bg-[#404040]/92 dark:shadow-[6px_6px_0_rgba(0,0,0,0.45)]'
+      )
     }
     if (colorScheme === 'sunset') {
       return cn(
@@ -1280,13 +3024,22 @@ export default function App(): JSX.Element {
         darkMode ? 'border-gray-600/50 bg-gray-900/45 shadow-[0_20px_55px_rgba(0,0,0,0.45)]' : 'border-white/70 bg-white/48 shadow-[0_22px_58px_rgba(15,23,42,0.09)]'
       )
     }
-    if (colorScheme === 'xmb') {
+    if (colorScheme === 'ps3') {
       return 'rounded-2xl border border-slate-700/55 bg-slate-950/45 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl motion-safe:animate-ecs-fade-up'
+    }
+    if (colorScheme === 'xbox360') {
+      return 'rounded-2xl border border-zinc-700/60 bg-zinc-950/50 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_0_24px_rgba(74,222,128,0.08)] backdrop-blur-xl motion-safe:animate-ecs-fade-up'
     }
     if (colorScheme === 'cube') {
       return cn(
         'rounded-[2rem] border p-4 backdrop-blur-xl motion-safe:animate-ecs-fade-up',
         darkMode ? 'border-indigo-400/35 bg-slate-900/40 shadow-[0_0_32px_rgba(99,102,241,0.16)]' : 'border-indigo-300/50 bg-white/60 shadow-xl'
+      )
+    }
+    if (colorScheme === 'bee') {
+      return cn(
+        'rounded-[2rem] border p-4 backdrop-blur-xl motion-safe:animate-ecs-fade-up',
+        darkMode ? 'border-amber-500/35 bg-stone-950/50 shadow-[0_0_28px_rgba(245,158,11,0.14)]' : 'border-amber-300/75 bg-amber-50/55 shadow-xl'
       )
     }
     if (colorScheme === 'wiiu') {
@@ -1330,9 +3083,14 @@ export default function App(): JSX.Element {
         darkMode ? 'border-gray-600/55 bg-gray-800/92 text-gray-100' : 'border-white/80 bg-white/90 text-gray-900'
       )
     }
-    if (colorScheme === 'xmb') {
+    if (colorScheme === 'ps3') {
       return cn(
         'rounded-xl border border-slate-600/60 bg-slate-900/88 p-6 text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:90ms]'
+      )
+    }
+    if (colorScheme === 'xbox360') {
+      return cn(
+        'rounded-lg border border-zinc-600/65 bg-zinc-950/90 p-6 text-zinc-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_0_20px_rgba(74,222,128,0.06)] motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:90ms]'
       )
     }
     if (colorScheme === 'cube') {
@@ -1341,6 +3099,14 @@ export default function App(): JSX.Element {
         darkMode
           ? 'border-indigo-400/45 bg-slate-900/90 text-slate-100 shadow-[0_0_22px_rgba(99,102,241,0.14)]'
           : 'border-indigo-300/60 bg-white/92 text-indigo-950 shadow-lg'
+      )
+    }
+    if (colorScheme === 'bee') {
+      return cn(
+        'rounded-[1.5rem] border p-6 motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:90ms]',
+        darkMode
+          ? 'border-amber-500/45 bg-stone-900/88 text-amber-50 shadow-[0_0_24px_rgba(245,158,11,0.12)]'
+          : 'border-amber-300/85 bg-amber-50/92 text-amber-950 shadow-lg'
       )
     }
     if (colorScheme === 'wiiu') {
@@ -1357,6 +3123,341 @@ export default function App(): JSX.Element {
     }
     return 'ecs-aero-glass-panel rounded-[1.75rem] border border-white/70 bg-white/82 p-6 motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:90ms] dark:border-white/10 dark:bg-slate-900/82'
   }, [colorScheme, darkMode])
+
+  /** Login page main grid: column ratios and density tuned per palette (F-pattern vs. form-forward, etc.). */
+  const loginShellGridClass = useMemo(() => {
+    const base =
+      'grid min-h-[calc(100vh-3rem)] w-full grid-rows-1 items-stretch motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:45ms]'
+    if (colorScheme === 'default') return cn(base, 'gap-5 lg:grid-cols-[1.08fr_0.92fr] lg:gap-6')
+    if (colorScheme === 'violet') return cn(base, 'gap-6 lg:grid-cols-[1.12fr_0.88fr] lg:gap-8')
+    if (colorScheme === 'teal') return cn(base, 'gap-3 lg:grid-cols-[minmax(0,1fr)_min(26rem,100%)]')
+    if (colorScheme === 'sunset') return cn(base, 'gap-6 lg:grid-cols-[1.24fr_0.76fr]')
+    if (colorScheme === 'wii') return cn(base, 'gap-5 lg:grid-cols-[1.04fr_0.96fr]')
+    if (isPs3OrXbox360(colorScheme)) return cn(base, 'gap-5 lg:grid-cols-[minmax(0,1.38fr)_minmax(14rem,0.62fr)]')
+    if (colorScheme === 'cube') return cn(base, 'gap-6 lg:grid-cols-2')
+    if (colorScheme === 'bee') return cn(base, 'gap-6 lg:grid-cols-[1.08fr_0.92fr]')
+    if (colorScheme === 'wiiu') return cn(base, 'gap-5 lg:grid-cols-[1.02fr_0.98fr]')
+    if (colorScheme === '3ds') return cn(base, 'gap-4 lg:grid-cols-[0.92fr_1.08fr]')
+    return cn(base, 'gap-5 lg:grid-cols-[1.1fr_0.9fr]')
+  }, [colorScheme])
+
+  const loginHeroCopy = useMemo(() => {
+    if (colorScheme === 'violet') {
+      return {
+        badge: 'Aero meadow',
+        title: 'Sign in',
+        body: 'Same look as the rest of the app once you are past this screen.'
+      }
+    }
+    if (colorScheme === 'teal') {
+      return {
+        badge: 'Classic desktop',
+        title: 'Sign in',
+        body: 'Gray window, navy title bar, chunky borders. Nothing fancy.'
+      }
+    }
+    if (colorScheme === 'sunset') {
+      return {
+        badge: 'Neon skin',
+        title: 'Sign in',
+        body: 'Bright gradients on the left, plain form on the right.'
+      }
+    }
+    if (colorScheme === 'wii') {
+      return {
+        badge: 'Wii menu',
+        title: 'Sign in',
+        body: 'Soft silver background, rounded panels.'
+      }
+    }
+    if (colorScheme === 'ps3') {
+      return {
+        badge: 'PS3 (XMB)',
+        title: 'Sign in',
+        body: 'Black field, vertical column guides, drifting silver-blue wave like the XMB.'
+      }
+    }
+    if (colorScheme === 'xbox360') {
+      return {
+        badge: 'Xbox 360 (NXE)',
+        title: 'Sign in',
+        body: 'Charcoal blades, Xbox green glow, horizontal sweep — same wide hero layout as PS3.'
+      }
+    }
+    if (colorScheme === 'cube') {
+      return {
+        badge: 'GameCube',
+        title: 'Sign in',
+        body: 'Indigo BIOS glass, silver grid, warm orange accents — like the startup cube era, not the console purple plastic.'
+      }
+    }
+    if (colorScheme === 'bee') {
+      return {
+        badge: 'Honey bee',
+        title: 'Sign in',
+        body: 'Honeycomb field and amber chrome — a secret palette unlocked from Settings.'
+      }
+    }
+    if (colorScheme === 'wiiu') {
+      return {
+        badge: 'Wii U',
+        title: 'Sign in',
+        body: 'Light tiles, lots of cyan.'
+      }
+    }
+    if (colorScheme === '3ds') {
+      return {
+        badge: '3DS',
+        title: 'Sign in',
+        body: 'Tighter layout, red accents.'
+      }
+    }
+    return {
+      badge: 'Epic Character Storage',
+      title: 'Sign in',
+      body: 'Characters and campaigns live here after you sign in. Sessions do not persist; you will sign in again next launch.'
+    }
+  }, [colorScheme])
+
+  const workspaceHomeHero = useMemo(() => {
+    const email = authEmail.trim()
+    const who = email || 'this account'
+    const camp = selectedCampaignId ? activeCampaign?.name ?? 'Shared campaign' : 'Personal workspace'
+    const n = characters.length
+    return {
+      badge: 'Home',
+      title: `Signed in as ${who}`,
+      body: `${n} character${n === 1 ? '' : 's'}. ${camp}. Use Sheet for edits; Battle needs a shared campaign.`
+    }
+  }, [authEmail, characters.length, selectedCampaignId, activeCampaign?.name])
+
+  const loginSignHeadingClass = useMemo(() => {
+    if (colorScheme === 'default') return darkMode ? 'text-slate-50' : 'text-slate-900'
+    if (colorScheme === 'teal') return 'text-gray-900 dark:text-gray-50'
+    if (colorScheme === 'sunset') return darkMode ? 'text-slate-50' : 'text-indigo-950'
+    if (colorScheme === 'wii') return darkMode ? 'text-gray-50' : 'text-gray-900'
+    if (colorScheme === 'ps3') return 'text-slate-50'
+    if (colorScheme === 'xbox360') return 'text-zinc-50'
+    if (colorScheme === 'cube') return darkMode ? 'text-slate-50' : 'text-indigo-950'
+    if (colorScheme === 'bee') return darkMode ? 'text-amber-50' : 'text-amber-950'
+    if (colorScheme === 'wiiu') return darkMode ? 'text-cyan-50' : 'text-cyan-950'
+    if (colorScheme === '3ds') return darkMode ? 'text-rose-50' : 'text-rose-950'
+    return 'text-cyan-950 dark:text-cyan-50'
+  }, [colorScheme, darkMode])
+
+  const loginAuthFieldClass = useMemo(() => {
+    if (colorScheme === 'default') {
+      return darkMode
+        ? 'border border-slate-600 bg-slate-950/65 text-slate-100 placeholder:text-slate-500 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-500/25'
+        : 'border border-slate-300 bg-white text-slate-900 placeholder:text-slate-400 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-400/25'
+    }
+    if (colorScheme === 'violet') {
+      return darkMode
+        ? 'border border-teal-700/55 bg-slate-900/70 text-cyan-50 placeholder:text-cyan-200/45 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/25'
+        : 'border border-cyan-300/75 bg-white/92 text-cyan-950 placeholder:text-cyan-800/45 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-400/25'
+    }
+    if (colorScheme === 'teal') {
+      return cn(
+        'border border-black/45 bg-white text-gray-900 placeholder:text-gray-500 focus:border-[#000080] focus:outline-none focus:ring-1 focus:ring-[#000080]/35',
+        'shadow-[inset_1px_1px_0_#ffffff,inset_-1px_-1px_0_#b8b8b8]',
+        'dark:border-black/65 dark:bg-[#2a2a2a] dark:text-gray-100 dark:placeholder:text-gray-400 dark:shadow-[inset_1px_1px_0_#555,inset_-1px_-1px_0_#1a1a1a]'
+      )
+    }
+    if (colorScheme === 'sunset') {
+      return darkMode
+        ? 'border-2 border-fuchsia-500/40 bg-slate-950/70 text-slate-100 placeholder:text-slate-400 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/20'
+        : 'border-2 border-pink-300/85 bg-white/92 text-indigo-950 placeholder:text-fuchsia-900/40 focus:border-fuchsia-500 focus:outline-none focus:ring-2 focus:ring-fuchsia-400/25'
+    }
+    if (colorScheme === 'wii') {
+      return darkMode
+        ? 'border border-slate-600 bg-slate-800/80 text-gray-100 placeholder:text-gray-400 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-400/20'
+        : 'border border-slate-300/90 bg-white/96 text-gray-900 placeholder:text-gray-500 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-300/30'
+    }
+    if (colorScheme === 'ps3') {
+      return 'border border-slate-600 bg-slate-900/88 text-slate-100 placeholder:text-slate-500 focus:border-sky-400 focus:outline-none focus:ring-2 focus:ring-sky-400/25'
+    }
+    if (colorScheme === 'xbox360') {
+      return 'border border-zinc-600 bg-zinc-950/90 text-zinc-100 placeholder:text-zinc-500 focus:border-lime-400 focus:outline-none focus:ring-2 focus:ring-lime-400/22'
+    }
+    if (colorScheme === 'cube') {
+      return darkMode
+        ? 'border border-indigo-400/45 bg-slate-950/75 text-slate-100 placeholder:text-slate-400 focus:border-orange-300 focus:outline-none focus:ring-2 focus:ring-orange-300/22'
+        : 'border border-indigo-400/70 bg-white/95 text-indigo-950 placeholder:text-indigo-900/45 focus:border-violet-500 focus:outline-none focus:ring-2 focus:ring-violet-400/25'
+    }
+    if (colorScheme === 'bee') {
+      return darkMode
+        ? 'border border-amber-500/45 bg-stone-950/80 text-amber-50 placeholder:text-amber-200/45 focus:border-amber-300 focus:outline-none focus:ring-2 focus:ring-amber-300/22'
+        : 'border border-amber-400/80 bg-white/95 text-amber-950 placeholder:text-amber-900/45 focus:border-amber-600 focus:outline-none focus:ring-2 focus:ring-amber-400/25'
+    }
+    if (colorScheme === 'wiiu') {
+      return darkMode
+        ? 'border border-cyan-500/40 bg-slate-950/70 text-cyan-50 placeholder:text-cyan-200/50 focus:border-cyan-300 focus:outline-none focus:ring-2 focus:ring-cyan-300/20'
+        : 'border border-cyan-300/80 bg-white/95 text-cyan-950 placeholder:text-cyan-800/50 focus:border-cyan-500 focus:outline-none focus:ring-2 focus:ring-cyan-400/25'
+    }
+    if (colorScheme === '3ds') {
+      return darkMode
+        ? 'border border-rose-500/45 bg-zinc-950/75 text-rose-50 placeholder:text-rose-200/45 focus:border-rose-300 focus:outline-none focus:ring-2 focus:ring-rose-300/20'
+        : 'border border-rose-300/90 bg-white text-rose-950 placeholder:text-rose-800/45 focus:border-rose-500 focus:outline-none focus:ring-2 focus:ring-rose-400/20'
+    }
+    return darkMode
+      ? 'border border-teal-700/50 bg-slate-900/70 text-cyan-50 placeholder:text-cyan-200/50 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/25'
+      : 'border border-cyan-200/80 bg-white/92 text-cyan-950 placeholder:text-cyan-800/50 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-400/25'
+  }, [colorScheme, darkMode])
+
+  const loginSubtleLinkClass = useMemo(() => {
+    if (colorScheme === 'default') return 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'
+    if (colorScheme === 'teal') return 'text-[#000080] hover:underline dark:text-[#9ec1ff]'
+    if (colorScheme === 'sunset') return darkMode ? 'text-fuchsia-200/80 hover:text-fuchsia-100' : 'text-fuchsia-800/90 hover:text-fuchsia-950'
+    if (colorScheme === 'wii') return darkMode ? 'text-sky-200/80 hover:text-white' : 'text-sky-800/90 hover:text-sky-950'
+    if (colorScheme === 'ps3') return 'text-slate-400 hover:text-sky-200'
+    if (colorScheme === 'xbox360') return 'text-zinc-400 hover:text-lime-200'
+    if (colorScheme === 'cube') return darkMode ? 'text-indigo-200/75 hover:text-white' : 'text-indigo-800/85 hover:text-indigo-950'
+    if (colorScheme === 'bee') return darkMode ? 'text-amber-200/80 hover:text-white' : 'text-amber-900/85 hover:text-amber-950'
+    if (colorScheme === 'wiiu') return darkMode ? 'text-cyan-200/75 hover:text-white' : 'text-cyan-800/90 hover:text-cyan-950'
+    if (colorScheme === '3ds') return darkMode ? 'text-rose-200/75 hover:text-white' : 'text-rose-800/90 hover:text-rose-950'
+    return 'text-cyan-800/85 hover:text-cyan-950 dark:text-cyan-200/80 dark:hover:text-white'
+  }, [colorScheme, darkMode])
+
+  const loginPwdRulesPanelClass = useMemo(() => {
+    if (colorScheme === 'default')
+      return 'rounded-xl border border-slate-200 bg-slate-50/90 p-3 text-xs dark:border-slate-600 dark:bg-slate-800/60'
+    if (colorScheme === 'teal')
+      return 'rounded-sm border border-black/35 bg-[#f0eee6] p-3 text-xs text-gray-900 shadow-[inset_1px_1px_0_#fff,inset_-1px_-1px_0_#b0b0b0] dark:border-black/55 dark:bg-[#3a3a3a] dark:text-gray-100 dark:shadow-[inset_1px_1px_0_#555,inset_-1px_-1px_0_#222]'
+    if (colorScheme === 'sunset')
+      return darkMode
+        ? 'rounded-xl border border-fuchsia-500/35 bg-slate-900/60 p-3 text-xs'
+        : 'rounded-xl border-2 border-pink-200/90 bg-pink-50/80 p-3 text-xs'
+    if (colorScheme === 'ps3') return 'rounded-md border border-slate-600 bg-slate-800/80 p-3 text-xs'
+    if (colorScheme === 'xbox360')
+      return 'rounded-md border border-zinc-600/90 bg-zinc-900/82 p-3 text-xs shadow-[0_0_0_1px_rgba(74,222,128,0.08)]'
+    if (colorScheme === 'cube')
+      return darkMode ? 'rounded-lg border border-indigo-400/35 bg-slate-900/70 p-3 text-xs' : 'rounded-lg border border-indigo-200/90 bg-indigo-50/80 p-3 text-xs'
+    if (colorScheme === 'bee')
+      return darkMode ? 'rounded-xl border border-amber-500/35 bg-stone-900/70 p-3 text-xs' : 'rounded-xl border border-amber-200/90 bg-amber-50/90 p-3 text-xs'
+    if (colorScheme === 'wiiu')
+      return darkMode ? 'rounded-xl border border-cyan-500/35 bg-slate-900/65 p-3 text-xs' : 'rounded-xl border border-cyan-200/80 bg-cyan-50/85 p-3 text-xs'
+    if (colorScheme === '3ds')
+      return darkMode ? 'rounded-md border border-rose-500/35 bg-zinc-900/70 p-3 text-xs' : 'rounded-md border border-rose-200/90 bg-rose-50/90 p-3 text-xs'
+    return 'rounded-xl border border-cyan-200/70 bg-white/80 p-3 text-xs dark:border-teal-700/50 dark:bg-slate-900/65'
+  }, [colorScheme, darkMode])
+
+  const loginGhostActionClass = useMemo(() => {
+    if (colorScheme === 'default')
+      return 'w-full border border-slate-300 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-800 hover:bg-slate-100 dark:border-slate-600 dark:bg-slate-800/70 dark:text-slate-100 dark:hover:bg-slate-800'
+    if (colorScheme === 'teal')
+      return 'w-full border border-black/40 bg-[#d4d0c8] px-3 py-2 text-sm font-semibold text-gray-900 shadow-[inset_-1px_-1px_0_#404040,inset_1px_1px_0_#ffffff] hover:bg-[#c8c4bc] dark:border-black/55 dark:bg-[#4a4a4a] dark:text-gray-100 dark:shadow-[inset_-1px_-1px_0_#222,inset_1px_1px_0_#777] dark:hover:bg-[#555]'
+    if (colorScheme === 'sunset')
+      return darkMode
+        ? 'w-full rounded-xl border border-cyan-400/40 bg-slate-900/70 px-3 py-2 text-sm font-semibold text-cyan-100 hover:bg-slate-900'
+        : 'w-full rounded-xl border-2 border-pink-300/80 bg-white/90 px-3 py-2 text-sm font-semibold text-indigo-900 hover:bg-white'
+    if (colorScheme === 'ps3')
+      return 'w-full rounded-md border border-slate-500 bg-slate-800/90 px-3 py-2 text-sm font-semibold text-slate-100 hover:bg-slate-800'
+    if (colorScheme === 'xbox360')
+      return 'w-full rounded-md border border-zinc-600 bg-zinc-900/90 px-3 py-2 text-sm font-semibold text-zinc-100 hover:bg-zinc-800 shadow-[0_0_0_1px_rgba(74,222,128,0.1)]'
+    if (colorScheme === 'cube')
+      return darkMode
+        ? 'w-full rounded-lg border border-indigo-400/40 bg-slate-900/75 px-3 py-2 text-sm font-semibold text-indigo-100 hover:bg-slate-900'
+        : 'w-full rounded-lg border border-indigo-300/80 bg-white/95 px-3 py-2 text-sm font-semibold text-indigo-950 hover:bg-white'
+    if (colorScheme === 'bee')
+      return darkMode
+        ? 'w-full rounded-xl border border-amber-500/40 bg-stone-900/75 px-3 py-2 text-sm font-semibold text-amber-50 hover:bg-stone-900'
+        : 'w-full rounded-xl border border-amber-300/85 bg-white/95 px-3 py-2 text-sm font-semibold text-amber-950 hover:bg-amber-50/80'
+    if (colorScheme === 'wiiu')
+      return darkMode
+        ? 'w-full rounded-xl border border-cyan-500/40 bg-slate-900/70 px-3 py-2 text-sm font-semibold text-cyan-50 hover:bg-slate-900'
+        : 'w-full rounded-xl border border-cyan-300/80 bg-white/95 px-3 py-2 text-sm font-semibold text-cyan-950 hover:bg-white'
+    if (colorScheme === '3ds')
+      return darkMode
+        ? 'w-full rounded-md border border-rose-400/40 bg-zinc-900/75 px-3 py-2 text-sm font-semibold text-rose-50 hover:bg-zinc-900'
+        : 'w-full rounded-md border border-rose-300/85 bg-white px-3 py-2 text-sm font-semibold text-rose-950 hover:bg-rose-50/80'
+    return 'w-full rounded-xl border border-sky-300 bg-sky-50/90 px-3 py-2 text-sm font-semibold text-sky-800 hover:bg-white dark:border-sky-500/40 dark:bg-slate-900/70 dark:text-sky-200 dark:hover:bg-slate-900'
+  }, [colorScheme, darkMode])
+
+  const loginSmtpOutlineClass = useMemo(() => {
+    if (colorScheme === 'ps3')
+      return 'w-full rounded-md border border-sky-500/50 px-3 py-2 text-sm font-semibold text-sky-200 hover:bg-slate-800/80'
+    if (colorScheme === 'xbox360')
+      return 'w-full rounded-md border border-lime-500/45 px-3 py-2 text-sm font-semibold text-lime-100 hover:bg-zinc-900/90'
+    if (colorScheme === 'teal')
+      return 'w-full rounded-md border border-black/40 bg-[#ece9d8] px-3 py-2 text-sm font-semibold text-[#000080] hover:bg-[#ddd9d0] dark:border-black/55 dark:bg-[#4a4a4a] dark:text-[#9ec1ff] dark:hover:bg-[#555]'
+    return cn(
+      'w-full rounded-xl border px-3 py-2 text-sm font-semibold transition-colors',
+      colorScheme === 'sunset' && (darkMode ? 'border-cyan-400/45 text-cyan-100 hover:bg-slate-900/80' : 'border-fuchsia-300 text-fuchsia-900 hover:bg-pink-50'),
+      colorScheme === 'bee' && (darkMode ? 'border-amber-400/45 text-amber-100 hover:bg-stone-900/85' : 'border-amber-500/50 text-amber-950 hover:bg-amber-50'),
+      colorScheme === 'default' && 'border-sky-300 text-sky-800 hover:bg-sky-50 dark:border-sky-500/45 dark:text-sky-200 dark:hover:bg-slate-800/80',
+      !['sunset', 'default', 'ps3', 'xbox360', 'teal', 'bee'].includes(colorScheme) &&
+        'border-indigo-300 text-indigo-800 hover:bg-indigo-50 dark:border-indigo-500/40 dark:text-indigo-200 dark:hover:bg-slate-800/80'
+    )
+  }, [colorScheme, darkMode])
+
+  const loginAuthMessageClass = useMemo(() => {
+    if (colorScheme === 'ps3') return 'text-slate-300'
+    if (colorScheme === 'xbox360') return 'text-zinc-300'
+    if (colorScheme === 'teal') return 'text-gray-800 dark:text-gray-200'
+    if (colorScheme === 'sunset') return darkMode ? 'text-slate-200' : 'text-indigo-900/90'
+    if (colorScheme === 'bee') return darkMode ? 'text-amber-100/90' : 'text-amber-950/90'
+    if (colorScheme === '3ds') return darkMode ? 'text-rose-100/90' : 'text-rose-900/90'
+    return 'text-slate-600 dark:text-slate-300'
+  }, [colorScheme, darkMode])
+
+  const loginShellMaxClass = useMemo(() => {
+    if (colorScheme === '3ds') return 'max-w-[52rem]'
+    if (isPs3OrXbox360(colorScheme)) return 'max-w-[70rem]'
+    if (colorScheme === 'sunset') return 'max-w-[72rem]'
+    if (colorScheme === 'cube') return 'max-w-[68rem]'
+    if (colorScheme === 'bee') return 'max-w-[76rem]'
+    return 'max-w-6xl'
+  }, [colorScheme])
+
+  const loginSignColumnClass = useMemo(() => {
+    if (isPs3OrXbox360(colorScheme)) return 'w-full min-w-0 lg:max-w-[22rem] lg:justify-self-end'
+    if (colorScheme === 'teal') return 'w-full min-w-0 lg:max-w-none'
+    return 'w-full min-w-0'
+  }, [colorScheme])
+
+  const reorderWorkspaceFlow = useCallback((from: WorkspaceFlowRegion, to: WorkspaceFlowRegion) => {
+    if (from === to) return
+    setRegionFlowCustom(true)
+    setWorkspaceFlow((prev) => {
+      const fi = prev.indexOf(from)
+      const ti = prev.indexOf(to)
+      if (fi === -1 || ti === -1) return prev
+      const next = [...prev]
+      next.splice(fi, 1)
+      next.splice(ti, 0, from)
+      return next
+    })
+    setActiveUiPresetId(null)
+  }, [])
+
+  const moveWorkspaceRegionByOffset = useCallback((region: WorkspaceFlowRegion, delta: -1 | 1) => {
+    setRegionFlowCustom(true)
+    setWorkspaceFlow((prev) => {
+      const i = prev.indexOf(region)
+      if (i === -1) return prev
+      const j = i + delta
+      if (j < 0 || j >= prev.length) return prev
+      const next = [...prev]
+      const tmp = next[i]!
+      next[i] = next[j]!
+      next[j] = tmp!
+      return next
+    })
+    setActiveUiPresetId(null)
+  }, [])
+
+  const moveWorkspaceRegionToIndex = useCallback((region: WorkspaceFlowRegion, targetIndex: number) => {
+    setRegionFlowCustom(true)
+    setWorkspaceFlow((prev) => {
+      const i = prev.indexOf(region)
+      if (i === -1) return prev
+      const next = prev.filter((r) => r !== region)
+      const clamped = Math.max(0, Math.min(targetIndex, next.length))
+      next.splice(clamped, 0, region)
+      return next
+    })
+    setActiveUiPresetId(null)
+  }, [])
 
   function updateBattleDraft(
     characterId: string,
@@ -1411,6 +3512,26 @@ export default function App(): JSX.Element {
     setBattleParticipants((prev) => prev.filter((id) => id !== characterId))
   }
 
+  function addVisibleRosterToEncounter(): void {
+    const visibleIds = filteredCharacters.map((character) => character.id)
+    setBattleParticipants((prev) => {
+      const onBoard = new Set(prev)
+      const toAdd = visibleIds.filter((id) => !onBoard.has(id))
+      if (toAdd.length === 0) {
+        queueMicrotask(() =>
+          setAppMessage('Everyone in the current roster filter is already on the board.')
+        )
+        return prev
+      }
+      queueMicrotask(() =>
+        setAppMessage(
+          `Added ${toAdd.length} character${toAdd.length === 1 ? '' : 's'} from the roster filter to the encounter.`
+        )
+      )
+      return [...prev, ...toAdd]
+    })
+  }
+
   function sortParticipantsByInitiative(): void {
     setBattleParticipants((prev) =>
       [...prev].sort((a, b) => {
@@ -1451,371 +3572,647 @@ export default function App(): JSX.Element {
     setAppMessage('Encounter values reset from character sheets.')
   }
 
+  const wsTab = workspaceTab
+
   if (!isAuthed) {
+    const authField = cn('w-full px-3 py-2', ecsWideControlRound(colorScheme), loginAuthFieldClass)
     return (
-      <div className={cn('ecs-theme-shell ecs-aero-login-shell min-h-screen px-4 py-6 leading-relaxed', shellText)}>
-        <div
-          className={cn(
-            'mx-auto grid min-h-[calc(100vh-3rem)] w-full max-w-6xl grid-rows-1 gap-4 lg:grid-cols-[1.1fr_0.9fr]',
-            loginOuterChrome
-          )}
-        >
-          <section
-            className={cn(
-              'relative flex min-h-0 flex-col overflow-hidden bg-gradient-to-br p-7 shadow-aero-float',
-              colorScheme === 'violet' && 'ecs-shape-banner ecs-diagonal-strip rounded-[1.75rem]',
-              colorScheme === 'teal' &&
-                'rounded-md border border-black/50 shadow-[4px_4px_0_rgba(0,0,0,0.14)] dark:border-black/55 dark:shadow-[4px_4px_0_rgba(0,0,0,0.35)]',
-              colorScheme === 'sunset' && 'ecs-shape-banner ecs-diagonal-strip rounded-[1.75rem]',
-              colorScheme === 'wii' &&
-                'rounded-[2rem] border border-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.88)] dark:border-gray-600/45',
-              colorScheme === 'xmb' &&
-                'rounded-xl border border-slate-700/55 shadow-[inset_0_0_48px_rgba(0,0,0,0.35)]',
-              colorScheme === 'cube' &&
-                'rounded-[1.2rem] border border-indigo-300/45 shadow-[0_0_34px_rgba(99,102,241,0.24)] dark:border-indigo-400/35',
-              colorScheme === 'wiiu' &&
-                'rounded-[1.5rem] border border-cyan-200/55 shadow-[0_0_30px_rgba(34,211,238,0.22)] dark:border-cyan-500/35',
-              colorScheme === '3ds' &&
-                'rounded-md border border-rose-300/70 shadow-[0_0_26px_rgba(244,63,94,0.22)] dark:border-rose-500/35',
-              colorScheme === 'default' &&
-                'rounded-2xl border border-slate-200 shadow-md dark:border-slate-700',
-              scheme.grad,
-              !darkMode && colorScheme === 'sunset' && 'text-indigo-950',
-              !darkMode && colorScheme === 'wii' && 'text-gray-900',
-              !darkMode && colorScheme === 'wiiu' && 'text-cyan-900',
-              !darkMode && colorScheme === '3ds' && 'text-rose-900',
-              !darkMode && colorScheme === 'default' && 'text-slate-900',
-              (darkMode || !['sunset', 'wii', 'wiiu', '3ds', 'default'].includes(colorScheme)) && 'text-white'
-            )}
-          >
-            {colorScheme === 'violet' ? (
-              <>
-                <div
-                  className="pointer-events-none absolute -right-24 top-8 h-56 w-56 rounded-[58%_42%_55%_45%] bg-white/25 blur-2xl motion-safe:animate-ecs-aero-float"
-                  aria-hidden
-                />
-                <div
-                  className="pointer-events-none absolute -bottom-16 -left-12 h-48 w-72 rotate-12 rounded-[45%_55%_48%_52%] bg-lime-300/25 blur-2xl motion-safe:animate-ecs-aero-float"
-                  style={{ animationDelay: '-7s' }}
-                  aria-hidden
-                />
-              </>
-            ) : null}
+      <div
+        className={cn('ecs-theme-shell ecs-aero-login-shell relative min-h-screen overflow-x-clip leading-relaxed', shellText)}
+        data-ecs-login="1"
+      >
+        <EcsPaletteBackdrop />
+        <div className="relative z-[1] px-4 py-6">
+          <div className={cn('mx-auto w-full', loginShellMaxClass)}>
             {colorScheme === 'teal' ? (
-              <div
-                className="pointer-events-none absolute inset-0 opacity-[0.14] motion-safe:animate-ecs-aero-ribbon"
-                style={{
-                  background:
-                    'repeating-linear-gradient(-12deg, transparent, transparent 14px, rgba(255,255,255,0.35) 14px, rgba(255,255,255,0.35) 16px)'
-                }}
-                aria-hidden
-              />
-            ) : null}
-            {colorScheme === 'sunset' ? (
-              <>
-                <div
-                  className="pointer-events-none absolute -left-10 top-1/4 h-44 w-44 rounded-full bg-fuchsia-400/30 blur-3xl motion-safe:animate-ecs-aero-float dark:bg-fuchsia-600/20"
-                  aria-hidden
-                />
-                <div
-                  className="pointer-events-none absolute -bottom-8 right-0 h-52 w-52 rounded-full bg-cyan-400/25 blur-3xl motion-safe:animate-ecs-aero-float dark:bg-cyan-500/15"
-                  style={{ animationDelay: '-9s' }}
-                  aria-hidden
-                />
-              </>
-            ) : null}
-            {colorScheme === 'wii' ? (
-              <>
-                <div
-                  className="ecs-wii-shine-bubble pointer-events-none -left-[12%] top-[18%] h-56 w-56 motion-safe:animate-ecs-wii-drift"
-                  aria-hidden
-                />
-                <div
-                  className="ecs-wii-shine-bubble pointer-events-none bottom-[8%] right-[-8%] h-48 w-72 opacity-30 motion-safe:animate-ecs-wii-drift"
-                  style={{ animationDelay: '-8s' }}
-                  aria-hidden
-                />
-              </>
-            ) : null}
-            {colorScheme === 'xmb' ? (
-              <>
-                <div
-                  className="ecs-xmb-wave-layer motion-safe:animate-ecs-xmb-wave pointer-events-none"
-                  aria-hidden
-                />
-                <div className="ecs-xmb-login-sheen motion-safe:animate-ecs-xmb-wave pointer-events-none" aria-hidden />
-              </>
-            ) : null}
-            {colorScheme === 'cube' ? (
-              <>
-                <div className="ecs-cube-lime-pulse pointer-events-none motion-safe:animate-ecs-aero-float" aria-hidden />
-                <div
-                  className="pointer-events-none absolute right-[12%] top-[14%] h-36 w-36 rotate-12 rounded-3xl border border-white/15 bg-white/5 blur-[1px]"
-                  aria-hidden
-                />
-              </>
-            ) : null}
-            {colorScheme === 'wiiu' ? (
-              <div className="ecs-wiiu-bar pointer-events-none motion-safe:animate-ecs-aero-ribbon" aria-hidden />
-            ) : null}
-            {colorScheme === '3ds' ? (
-              <div className="ecs-3ds-hinge pointer-events-none" aria-hidden />
-            ) : null}
-            <div className="relative shrink-0">
-              <div className={cn('text-xs font-semibold uppercase tracking-[0.25em]', loginHeroTypography.badge)}>
-                EPIC CHARACTER STORAGE
-              </div>
-              <h1 className={cn('mt-4 text-4xl font-bold leading-tight', loginHeroTypography.title)}>
-                Welcome back
-              </h1>
-              <p className={cn('mt-3 max-w-xl text-sm leading-relaxed', loginHeroTypography.body)}>
-                Build, organize, and run your campaign sheets in one place. Login is required each time you open the app.
-              </p>
-            </div>
-            <LoginUpdateLog className="relative mt-6 min-h-0 flex-1" />
-          </section>
+              <div className={loginOuterChrome}>
+                <div className="flex select-none items-center justify-between border-b border-black/40 bg-gradient-to-r from-[#000080] to-[#1084d0] px-2 py-1 dark:border-black/55">
+                  <span className="truncate pl-0.5 text-left text-[11px] font-bold tracking-wide text-white">
+                    Epic Character Storage
+                  </span>
+                  <span className="inline-flex gap-0.5 pr-0.5" aria-hidden>
+                    <span className="inline-block h-2.5 w-2.5 rounded-[1px] bg-[#c0c0c0]/95 shadow-[inset_-1px_-1px_0_#555]" />
+                    <span className="inline-block h-2.5 w-2.5 rounded-[1px] bg-[#c0c0c0]/95 shadow-[inset_-1px_-1px_0_#555]" />
+                    <span className="inline-block h-2.5 w-2.5 rounded-[1px] bg-[#c0c0c0]/95 shadow-[inset_-1px_-1px_0_#555]" />
+                  </span>
+                </div>
+                <div className={cn(loginShellGridClass, 'min-h-0 flex-1 p-2 sm:p-3')}>
+                  <div className="flex min-h-0 flex-col gap-4 lg:min-h-[min(100%,calc(100vh-5.5rem))]">
+                    <section
+                      className={cn(
+                        'relative flex shrink-0 flex-col overflow-hidden bg-gradient-to-br p-7 shadow-aero-float',
+                        'rounded-md border border-black/50 shadow-[4px_4px_0_rgba(0,0,0,0.14)] dark:border-black/55 dark:shadow-[4px_4px_0_rgba(0,0,0,0.35)]',
+                        scheme.grad
+                      )}
+                    >
+                      <div
+                        className="pointer-events-none absolute inset-0 opacity-[0.14] motion-safe:animate-ecs-aero-ribbon"
+                        style={{
+                          background:
+                            'repeating-linear-gradient(-12deg, transparent, transparent 14px, rgba(255,255,255,0.35) 14px, rgba(255,255,255,0.35) 16px)'
+                        }}
+                        aria-hidden
+                      />
+                      <div className="relative shrink-0">
+                        <div className={cn('text-xs font-semibold uppercase tracking-[0.25em]', loginHeroTypography.badge)}>
+                          {loginHeroCopy.badge}
+                        </div>
+                        <h1 className={cn('mt-4 text-4xl font-bold leading-tight', loginHeroTypography.title)}>
+                          {loginHeroCopy.title}
+                        </h1>
+                        <p className={cn('mt-3 max-w-xl text-sm leading-relaxed', loginHeroTypography.body)}>
+                          {loginHeroCopy.body}
+                        </p>
+                      </div>
+                    </section>
+                    <LoginUpdateLog className="relative min-h-0 flex-1" colorScheme={colorScheme} />
+                  </div>
 
-          <section className={loginSignPanel}>
-            <h2 className="text-2xl font-bold tracking-tight">Sign in</h2>
-            <p className={cn('mt-1 text-sm leading-relaxed', loginIntroMuted)}>
-              Use your account email and password.
-            </p>
+                  <section className={cn(loginSignPanel, loginSignColumnClass)}>
+                    <h2 className={cn('text-2xl font-bold tracking-tight', loginSignHeadingClass)}>
+                      {authMode === 'login' ? 'Sign in' : null}
+                      {authMode === 'register' ? 'Create your account' : null}
+                      {authMode === 'reset' ? 'Reset your password' : null}
+                      {authMode === 'dev' ? 'Developer access' : null}
+                    </h2>
+                    <p className={cn('mt-1 text-sm leading-relaxed', loginIntroMuted)}>
+                      {authMode === 'login' ? 'Use your account email and password.' : null}
+                      {authMode === 'register' ? 'Pick a display name and a strong password to get started.' : null}
+                      {authMode === 'reset' ? 'Request a one-time token, then set a new password.' : null}
+                      {authMode === 'dev' ? 'Local-only password for quick development access.' : null}
+                    </p>
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              {(['login', 'register'] as AuthMode[]).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setAuthMode(mode)}
-                  className={cn(
-                    'ecs-interactive px-3 py-1.5 text-xs font-semibold uppercase motion-safe:active:scale-[0.98]',
-                    ecsAuthControlRound(colorScheme),
-                    authMode === mode ? scheme.primary : loginMutedBtn
-                  )}
-                >
-                  {mode}
-                </button>
-              ))}
-              <button
-                type="button"
-                onClick={() => setShowAdvancedAuthTools((prev) => !prev)}
-                className="ecs-interactive rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold uppercase text-slate-600 hover:bg-slate-50 motion-safe:active:scale-[0.98] dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800/60"
-              >
-                {showAdvancedAuthTools ? 'Hide tools' : 'More tools'}
-              </button>
-            </div>
+                    <div role="tablist" aria-label="Authentication mode" className="mt-4 flex flex-wrap gap-2">
+                      {(['login', 'register'] as AuthMode[]).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          role="tab"
+                          aria-selected={authMode === mode}
+                          onClick={() => setAuthMode(mode)}
+                          className={cn(
+                            'ecs-interactive px-3 py-1.5 text-xs font-semibold uppercase motion-safe:active:scale-[0.98]',
+                            ecsAuthControlRound(colorScheme),
+                            authMode === mode ? scheme.primary : loginMutedBtn
+                          )}
+                        >
+                          {mode === 'login' ? 'Sign in' : 'Register'}
+                        </button>
+                      ))}
+                      <button
+                        type="button"
+                        onClick={() => setAuthMode('reset')}
+                        aria-pressed={authMode === 'reset'}
+                        className={cn(
+                          'ecs-interactive ml-auto px-3 py-1.5 text-xs font-semibold motion-safe:active:scale-[0.98]',
+                          ecsAuthControlRound(colorScheme),
+                          authMode === 'reset' ? scheme.primary : loginMutedBtn
+                        )}
+                      >
+                        Forgot password?
+                      </button>
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setShowAdvancedAuthTools((prev) => !prev)}
+                        className={cn('text-[11px] font-semibold uppercase tracking-wide', loginSubtleLinkClass)}
+                      >
+                        {showAdvancedAuthTools ? '− Hide developer options' : '+ Developer options'}
+                      </button>
+                      {showAdvancedAuthTools ? (
+                        <button
+                          type="button"
+                          onClick={() => setAuthMode('dev')}
+                          aria-pressed={authMode === 'dev'}
+                          className={cn(
+                            'ecs-interactive px-2 py-1 text-[11px] font-semibold uppercase',
+                            ecsAuthControlRound(colorScheme),
+                            authMode === 'dev' ? scheme.primary : loginMutedBtn
+                          )}
+                        >
+                          Dev mode
+                        </button>
+                      ) : null}
+                    </div>
 
-            {showAdvancedAuthTools ? (
-              <div className="mt-2 flex flex-wrap gap-2">
-                {(['reset', 'dev'] as AuthMode[]).map((mode) => (
-                  <button
-                    key={mode}
-                    onClick={() => setAuthMode(mode)}
-                    className={cn(
-                      'ecs-interactive px-3 py-1.5 text-xs font-semibold uppercase motion-safe:active:scale-[0.98]',
-                      ecsAuthControlRound(colorScheme),
-                      authMode === mode ? scheme.primary : loginMutedBtn
+                    {authMode === 'dev' ? (
+                      <div className="mt-4 space-y-2">
+                        <input
+                          value={devPassword}
+                          onChange={(event) => setDevPassword(event.target.value)}
+                          type="password"
+                          placeholder="Dev mode password"
+                          className={authField}
+                        />
+                        <p className={cn('text-xs', loginAuthMessageClass)}>Dev mode is password-only for quick local access.</p>
+                      </div>
+                    ) : (
+                      <div className="mt-4 space-y-2">
+                        {authMode === 'register' ? (
+                          <input
+                            value={authDisplayName}
+                            onChange={(event) => setAuthDisplayName(event.target.value)}
+                            placeholder="Display name"
+                            className={authField}
+                          />
+                        ) : null}
+                        <input
+                          value={authEmail}
+                          onChange={(event) => setAuthEmail(event.target.value)}
+                          placeholder="Email"
+                          className={authField}
+                        />
+                        <input
+                          value={authMode === 'reset' ? newResetPassword : authPassword}
+                          onChange={(event) =>
+                            authMode === 'reset'
+                              ? setNewResetPassword(event.target.value)
+                              : setAuthPassword(event.target.value)
+                          }
+                          type="password"
+                          placeholder={authMode === 'reset' ? 'New password' : 'Password'}
+                          className={authField}
+                        />
+                        {authMode === 'reset' ? (
+                          <button
+                            type="button"
+                            onClick={() => void handleRequestResetToken()}
+                            className={loginGhostActionClass}
+                          >
+                            Request reset token
+                          </button>
+                        ) : null}
+                        {authMode === 'reset' ? (
+                          <input
+                            value={resetToken}
+                            onChange={(event) => setResetToken(event.target.value)}
+                            placeholder="Reset token"
+                            className={authField}
+                          />
+                        ) : null}
+                        {authMode === 'register' ? (
+                          <ul className={cn(loginPwdRulesPanelClass)}>
+                            {pwdRules.map((rule) => (
+                              <li
+                                key={rule.label}
+                                className={rule.pass ? 'text-emerald-600 dark:text-emerald-300' : loginAuthMessageClass}
+                              >
+                                {rule.pass ? '✓' : '•'} {rule.label}
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
+                        {showAdvancedAuthTools ? (
+                          <>
+                            <button type="button" onClick={() => void handleSendTestEmail()} className={loginSmtpOutlineClass}>
+                              Send test email
+                            </button>
+                            <button type="button" onClick={() => void handleCheckSmtpStatus()} className={loginSmtpOutlineClass}>
+                              Check email setup
+                            </button>
+                          </>
+                        ) : null}
+                        {smtpMessage ? (
+                          <p className="rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                            {smtpMessage}
+                          </p>
+                        ) : null}
+                        {resetTokenHint ? (
+                          <p className="rounded-lg bg-amber-100 px-3 py-2 text-xs text-amber-900 dark:bg-amber-500/15 dark:text-amber-100">
+                            {resetTokenHint}
+                          </p>
+                        ) : null}
+                      </div>
                     )}
-                  >
-                    {mode}
-                  </button>
-                ))}
-              </div>
-            ) : null}
 
-            {authMode === 'dev' ? (
-              <div className="mt-4 space-y-2">
-                <input
-                  value={devPassword}
-                  onChange={(event) => setDevPassword(event.target.value)}
-                  type="password"
-                  placeholder="Dev mode password"
-                  className="w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 dark:border-slate-700"
-                />
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Dev mode is password-only for quick local access.
-                </p>
+                    <button
+                      type="button"
+                      onClick={() => void handleAuthSubmit()}
+                      className={cn(
+                        'mt-4 w-full px-4 py-2 text-sm font-semibold transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99]',
+                        ecsWideControlRound(colorScheme),
+                        scheme.primary
+                      )}
+                    >
+                      {authMode === 'login' ? 'Sign in' : null}
+                      {authMode === 'register' ? 'Create account' : null}
+                      {authMode === 'reset' ? 'Set new password' : null}
+                      {authMode === 'dev' ? 'Unlock dev mode' : null}
+                    </button>
+                    {authMessage ? <p className={cn('mt-3 text-sm', loginAuthMessageClass)}>{authMessage}</p> : null}
+                  </section>
+                </div>
               </div>
             ) : (
-              <div className="mt-4 space-y-2">
-                {authMode === 'register' ? (
-                  <input
-                    value={authDisplayName}
-                    onChange={(event) => setAuthDisplayName(event.target.value)}
-                    placeholder="Display name"
-                    className="w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 dark:border-slate-700"
-                  />
-                ) : null}
-                <input
-                  value={authEmail}
-                  onChange={(event) => setAuthEmail(event.target.value)}
-                  placeholder="Email"
-                  className="w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 dark:border-slate-700"
-                />
-                <input
-                  value={authMode === 'reset' ? newResetPassword : authPassword}
-                  onChange={(event) =>
-                    authMode === 'reset'
-                      ? setNewResetPassword(event.target.value)
-                      : setAuthPassword(event.target.value)
-                  }
-                  type="password"
-                  placeholder={authMode === 'reset' ? 'New password' : 'Password'}
-                  className="w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 dark:border-slate-700"
-                />
-                {authMode === 'reset' ? (
+              <div className={cn(loginShellGridClass, loginOuterChrome)}>
+                <div className="flex min-h-0 flex-col gap-4 lg:min-h-[min(100%,calc(100vh-3rem))]">
+                  <section
+                    className={cn(
+                      'relative flex shrink-0 flex-col overflow-hidden bg-gradient-to-br p-7 shadow-aero-float',
+                      colorScheme === 'violet' &&
+                        (useShapeSoft
+                          ? 'ecs-diagonal-strip rounded-[1.75rem]'
+                          : 'ecs-shape-banner ecs-diagonal-strip rounded-[1.75rem]'),
+                      colorScheme === 'sunset' &&
+                        (useShapeSoft
+                          ? 'ecs-diagonal-strip rounded-[1.75rem]'
+                          : 'ecs-shape-banner ecs-diagonal-strip rounded-[1.75rem]'),
+                      colorScheme === 'wii' &&
+                        'rounded-[2rem] border border-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.88)] dark:border-gray-600/45',
+                      colorScheme === 'ps3' &&
+                        'rounded-xl border border-slate-700/55 shadow-[inset_0_0_48px_rgba(0,0,0,0.35)]',
+                      colorScheme === 'xbox360' &&
+                        'rounded-lg border border-lime-700/25 shadow-[inset_0_0_40px_rgba(0,0,0,0.45),0_0_28px_rgba(74,222,128,0.08)]',
+                      colorScheme === 'cube' &&
+                        'rounded-[1.2rem] border border-indigo-300/45 shadow-[0_0_34px_rgba(99,102,241,0.24)] dark:border-indigo-400/35',
+                      colorScheme === 'bee' &&
+                        'rounded-[1.65rem] border-2 border-amber-300/75 shadow-[0_0_32px_rgba(245,158,11,0.22)] dark:border-amber-500/40',
+                      colorScheme === 'wiiu' &&
+                        'rounded-[1.5rem] border border-cyan-200/55 shadow-[0_0_30px_rgba(34,211,238,0.22)] dark:border-cyan-500/35',
+                      colorScheme === '3ds' &&
+                        'rounded-md border border-rose-300/70 shadow-[0_0_26px_rgba(244,63,94,0.22)] dark:border-rose-500/35',
+                      colorScheme === 'default' &&
+                        'rounded-2xl border border-slate-200 shadow-md dark:border-slate-700',
+                      scheme.grad,
+                      !darkMode && colorScheme === 'sunset' && 'text-indigo-950',
+                      !darkMode && colorScheme === 'wii' && 'text-gray-900',
+                      !darkMode && colorScheme === 'wiiu' && 'text-cyan-900',
+                      !darkMode && colorScheme === '3ds' && 'text-rose-900',
+                      !darkMode && colorScheme === 'bee' && 'text-amber-950',
+                      !darkMode && colorScheme === 'default' && 'text-slate-900',
+                      (darkMode || !['sunset', 'wii', 'wiiu', '3ds', 'default', 'bee'].includes(colorScheme)) && 'text-white'
+                    )}
+                  >
+                    {colorScheme === 'violet' ? (
+                      <>
+                        <div
+                          className="pointer-events-none absolute -right-24 top-8 h-56 w-56 rounded-[58%_42%_55%_45%] bg-white/25 blur-2xl motion-safe:animate-ecs-aero-float"
+                          aria-hidden
+                        />
+                        <div
+                          className="pointer-events-none absolute -bottom-16 -left-12 h-48 w-72 rotate-12 rounded-[45%_55%_48%_52%] bg-lime-300/25 blur-2xl motion-safe:animate-ecs-aero-float"
+                          style={{ animationDelay: '-7s' }}
+                          aria-hidden
+                        />
+                      </>
+                    ) : null}
+                    {colorScheme === 'sunset' ? (
+                      <>
+                        <div
+                          className="pointer-events-none absolute -left-10 top-1/4 h-44 w-44 rounded-full bg-fuchsia-400/30 blur-3xl motion-safe:animate-ecs-aero-float dark:bg-fuchsia-600/20"
+                          aria-hidden
+                        />
+                        <div
+                          className="pointer-events-none absolute -bottom-8 right-0 h-52 w-52 rounded-full bg-cyan-400/25 blur-3xl motion-safe:animate-ecs-aero-float dark:bg-cyan-500/15"
+                          style={{ animationDelay: '-9s' }}
+                          aria-hidden
+                        />
+                      </>
+                    ) : null}
+                    {colorScheme === 'wii' ? (
+                      <>
+                        <div
+                          className="ecs-wii-shine-bubble pointer-events-none -left-[12%] top-[18%] h-56 w-56 motion-safe:animate-ecs-wii-drift"
+                          aria-hidden
+                        />
+                        <div
+                          className="ecs-wii-shine-bubble pointer-events-none bottom-[8%] right-[-8%] h-48 w-72 opacity-30 motion-safe:animate-ecs-wii-drift"
+                          style={{ animationDelay: '-8s' }}
+                          aria-hidden
+                        />
+                      </>
+                    ) : null}
+                    {colorScheme === 'ps3' ? (
+                      <>
+                        <div
+                          className="ecs-xmb-wave-layer motion-safe:animate-ecs-xmb-wave pointer-events-none"
+                          aria-hidden
+                        />
+                        <div className="ecs-xmb-login-sheen motion-safe:animate-ecs-xmb-wave pointer-events-none" aria-hidden />
+                      </>
+                    ) : null}
+                    {colorScheme === 'xbox360' ? (
+                      <>
+                        <div
+                          className="ecs-nxe-blade-sweep motion-safe:animate-ecs-nxe-drift pointer-events-none opacity-80"
+                          aria-hidden
+                        />
+                        <div className="ecs-nxe-ring-glow pointer-events-none opacity-70" aria-hidden />
+                      </>
+                    ) : null}
+                    {colorScheme === 'cube' ? (
+                      <>
+                        <div className="ecs-cube-sphere-glow pointer-events-none motion-safe:animate-ecs-aero-float" aria-hidden />
+                        <div
+                          className="pointer-events-none absolute right-[12%] top-[14%] h-36 w-36 rotate-12 rounded-3xl border border-white/15 bg-white/5 blur-[1px]"
+                          aria-hidden
+                        />
+                      </>
+                    ) : null}
+                    {colorScheme === 'bee' ? (
+                      <div className="ecs-bee-nectar-glow pointer-events-none motion-safe:animate-ecs-aero-float" aria-hidden />
+                    ) : null}
+                    {colorScheme === 'wiiu' ? (
+                      <div className="ecs-wiiu-bar pointer-events-none motion-safe:animate-ecs-aero-ribbon" aria-hidden />
+                    ) : null}
+                    {colorScheme === '3ds' ? (
+                      <div className="ecs-3ds-hinge pointer-events-none" aria-hidden />
+                    ) : null}
+                    <div className="relative shrink-0">
+                      <div className={cn('text-xs font-semibold uppercase tracking-[0.25em]', loginHeroTypography.badge)}>
+                        {loginHeroCopy.badge}
+                      </div>
+                      <h1 className={cn('mt-4 text-4xl font-bold leading-tight', loginHeroTypography.title)}>
+                        {loginHeroCopy.title}
+                      </h1>
+                      <p className={cn('mt-3 max-w-xl text-sm leading-relaxed', loginHeroTypography.body)}>
+                        {loginHeroCopy.body}
+                      </p>
+                    </div>
+                  </section>
+                  <LoginUpdateLog className="relative min-h-0 flex-1" colorScheme={colorScheme} />
+                </div>
+
+                <section className={cn(loginSignPanel, loginSignColumnClass)}>
+                  <h2 className={cn('text-2xl font-bold tracking-tight', loginSignHeadingClass)}>
+                    {authMode === 'login' ? 'Sign in' : null}
+                    {authMode === 'register' ? 'Create your account' : null}
+                    {authMode === 'reset' ? 'Reset your password' : null}
+                    {authMode === 'dev' ? 'Developer access' : null}
+                  </h2>
+                  <p className={cn('mt-1 text-sm leading-relaxed', loginIntroMuted)}>
+                    {authMode === 'login' ? 'Use your account email and password.' : null}
+                    {authMode === 'register' ? 'Pick a display name and a strong password to get started.' : null}
+                    {authMode === 'reset' ? 'Request a one-time token, then set a new password.' : null}
+                    {authMode === 'dev' ? 'Local-only password for quick development access.' : null}
+                  </p>
+
+                  <div role="tablist" aria-label="Authentication mode" className="mt-4 flex flex-wrap gap-2">
+                    {(['login', 'register'] as AuthMode[]).map((mode) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        role="tab"
+                        aria-selected={authMode === mode}
+                        onClick={() => setAuthMode(mode)}
+                        className={cn(
+                          'ecs-interactive px-3 py-1.5 text-xs font-semibold uppercase motion-safe:active:scale-[0.98]',
+                          ecsAuthControlRound(colorScheme),
+                          authMode === mode ? scheme.primary : loginMutedBtn
+                        )}
+                      >
+                        {mode === 'login' ? 'Sign in' : 'Register'}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => setAuthMode('reset')}
+                      aria-pressed={authMode === 'reset'}
+                      className={cn(
+                        'ecs-interactive ml-auto px-3 py-1.5 text-xs font-semibold motion-safe:active:scale-[0.98]',
+                        ecsAuthControlRound(colorScheme),
+                        authMode === 'reset' ? scheme.primary : loginMutedBtn
+                      )}
+                    >
+                      Forgot password?
+                    </button>
+                  </div>
+                  <div className="mt-1 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvancedAuthTools((prev) => !prev)}
+                      className={cn('text-[11px] font-semibold uppercase tracking-wide', loginSubtleLinkClass)}
+                    >
+                      {showAdvancedAuthTools ? '− Hide developer options' : '+ Developer options'}
+                    </button>
+                    {showAdvancedAuthTools ? (
+                      <button
+                        type="button"
+                        onClick={() => setAuthMode('dev')}
+                        aria-pressed={authMode === 'dev'}
+                        className={cn(
+                          'ecs-interactive px-2 py-1 text-[11px] font-semibold uppercase',
+                          ecsAuthControlRound(colorScheme),
+                          authMode === 'dev' ? scheme.primary : loginMutedBtn
+                        )}
+                      >
+                        Dev mode
+                      </button>
+                    ) : null}
+                  </div>
+
+                  {authMode === 'dev' ? (
+                    <div className="mt-4 space-y-2">
+                      <input
+                        value={devPassword}
+                        onChange={(event) => setDevPassword(event.target.value)}
+                        type="password"
+                        placeholder="Dev mode password"
+                        className={authField}
+                      />
+                      <p className={cn('text-xs', loginAuthMessageClass)}>Dev mode is password-only for quick local access.</p>
+                    </div>
+                  ) : (
+                    <div className="mt-4 space-y-2">
+                      {authMode === 'register' ? (
+                        <input
+                          value={authDisplayName}
+                          onChange={(event) => setAuthDisplayName(event.target.value)}
+                          placeholder="Display name"
+                          className={authField}
+                        />
+                      ) : null}
+                      <input
+                        value={authEmail}
+                        onChange={(event) => setAuthEmail(event.target.value)}
+                        placeholder="Email"
+                        className={authField}
+                      />
+                      <input
+                        value={authMode === 'reset' ? newResetPassword : authPassword}
+                        onChange={(event) =>
+                          authMode === 'reset'
+                            ? setNewResetPassword(event.target.value)
+                            : setAuthPassword(event.target.value)
+                        }
+                        type="password"
+                        placeholder={authMode === 'reset' ? 'New password' : 'Password'}
+                        className={authField}
+                      />
+                      {authMode === 'reset' ? (
+                        <button type="button" onClick={() => void handleRequestResetToken()} className={loginGhostActionClass}>
+                          Request reset token
+                        </button>
+                      ) : null}
+                      {authMode === 'reset' ? (
+                        <input
+                          value={resetToken}
+                          onChange={(event) => setResetToken(event.target.value)}
+                          placeholder="Reset token"
+                          className={authField}
+                        />
+                      ) : null}
+                      {authMode === 'register' ? (
+                        <ul className={cn(loginPwdRulesPanelClass)}>
+                          {pwdRules.map((rule) => (
+                            <li
+                              key={rule.label}
+                              className={rule.pass ? 'text-emerald-600 dark:text-emerald-300' : loginAuthMessageClass}
+                            >
+                              {rule.pass ? '✓' : '•'} {rule.label}
+                            </li>
+                          ))}
+                        </ul>
+                      ) : null}
+                      {showAdvancedAuthTools ? (
+                        <>
+                          <button type="button" onClick={() => void handleSendTestEmail()} className={loginSmtpOutlineClass}>
+                            Send test email
+                          </button>
+                          <button type="button" onClick={() => void handleCheckSmtpStatus()} className={loginSmtpOutlineClass}>
+                            Check email setup
+                          </button>
+                        </>
+                      ) : null}
+                      {smtpMessage ? (
+                        <p className="rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                          {smtpMessage}
+                        </p>
+                      ) : null}
+                      {resetTokenHint ? (
+                        <p className="rounded-lg bg-amber-100 px-3 py-2 text-xs text-amber-900 dark:bg-amber-500/15 dark:text-amber-100">
+                          {resetTokenHint}
+                        </p>
+                      ) : null}
+                    </div>
+                  )}
+
                   <button
                     type="button"
-                    onClick={() => void handleRequestResetToken()}
-                    className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-semibold dark:border-slate-700"
+                    onClick={() => void handleAuthSubmit()}
+                    className={cn(
+                      'mt-4 w-full px-4 py-2 text-sm font-semibold transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99]',
+                      ecsWideControlRound(colorScheme),
+                      scheme.primary
+                    )}
                   >
-                    Request reset token
+                    {authMode === 'login' ? 'Sign in' : null}
+                    {authMode === 'register' ? 'Create account' : null}
+                    {authMode === 'reset' ? 'Set new password' : null}
+                    {authMode === 'dev' ? 'Unlock dev mode' : null}
                   </button>
-                ) : null}
-                {authMode === 'reset' ? (
-                  <input
-                    value={resetToken}
-                    onChange={(event) => setResetToken(event.target.value)}
-                    placeholder="Reset token"
-                    className="w-full rounded-xl border border-slate-300 bg-transparent px-3 py-2 dark:border-slate-700"
-                  />
-                ) : null}
-                {authMode === 'register' ? (
-                  <ul className="rounded-xl border border-slate-200 p-3 text-xs dark:border-slate-700">
-                    {pwdRules.map((rule) => (
-                      <li key={rule.label} className={rule.pass ? 'text-emerald-600 dark:text-emerald-300' : 'text-slate-500 dark:text-slate-400'}>
-                        {rule.pass ? '✓' : '•'} {rule.label}
-                      </li>
-                    ))}
-                  </ul>
-                ) : null}
-                {showAdvancedAuthTools ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => void handleSendTestEmail()}
-                      className="w-full rounded-xl border border-sky-300 px-3 py-2 text-sm font-semibold text-sky-700 dark:border-sky-500/40 dark:text-sky-300"
-                    >
-                      Send test email
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleCheckSmtpStatus()}
-                      className="w-full rounded-xl border border-indigo-300 px-3 py-2 text-sm font-semibold text-indigo-700 dark:border-indigo-500/40 dark:text-indigo-300"
-                    >
-                      Check email setup
-                    </button>
-                  </>
-                ) : null}
-                {smtpMessage ? (
-                  <p className="rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">
-                    {smtpMessage}
-                  </p>
-                ) : null}
-                {resetTokenHint ? (
-                  <p className="rounded-lg bg-amber-100 px-3 py-2 text-xs text-amber-900 dark:bg-amber-500/15 dark:text-amber-100">
-                    {resetTokenHint}
-                  </p>
-                ) : null}
+                  {authMessage ? <p className={cn('mt-3 text-sm', loginAuthMessageClass)}>{authMessage}</p> : null}
+                </section>
               </div>
             )}
-
-            <button
-              type="button"
-              onClick={() => void handleAuthSubmit()}
-              className={cn(
-                'mt-4 w-full px-4 py-2 text-sm font-semibold transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99]',
-                ecsWideControlRound(colorScheme),
-                scheme.primary
-              )}
-            >
-              Continue
-            </button>
-            {authMessage ? <p className="mt-3 text-sm text-slate-600 dark:text-slate-300">{authMessage}</p> : null}
-          </section>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className={cn('ecs-theme-shell relative min-h-screen overflow-hidden leading-relaxed', shellText)}>
-      <div className="pointer-events-none absolute inset-0 ecs-palette-backdrop" aria-hidden>
-        <div className="ecs-palette-layer ecs-palette-layer--default">
-          <div className="ecs-default-backdrop" />
+    <div className={cn('ecs-theme-shell relative min-h-screen overflow-x-clip overflow-y-visible leading-relaxed', shellText)}>
+      {syncBanner ? (
+        <div
+          role="status"
+          className="pointer-events-auto fixed left-1/2 top-3 z-[120] flex max-w-md -translate-x-1/2 items-start gap-2 rounded-xl border border-sky-200/90 bg-sky-50/95 px-3 py-2 text-sm text-sky-950 shadow-lg backdrop-blur-sm dark:border-sky-500/35 dark:bg-sky-950/90 dark:text-sky-50"
+        >
+          <span className="min-w-0 flex-1 leading-snug">{syncBanner}</span>
+          <button
+            type="button"
+            aria-label="Dismiss sync notice"
+            onClick={() => {
+              if (syncBannerClearRef.current) clearTimeout(syncBannerClearRef.current)
+              syncBannerClearRef.current = null
+              setSyncBanner(null)
+            }}
+            className="shrink-0 rounded-md border border-sky-300/80 px-2 py-0.5 text-xs font-semibold text-sky-900 hover:bg-sky-100/80 dark:border-sky-400/40 dark:text-sky-100 dark:hover:bg-sky-900/60"
+          >
+            ×
+          </button>
         </div>
-        <div className="ecs-palette-layer ecs-palette-layer--violet ecs-aero-scene">
-          <div className="ecs-aero-sky" />
-          <div className="ecs-aero-ribbon motion-safe:animate-ecs-aero-ribbon" />
-          <div className="ecs-aero-specular motion-safe:animate-ecs-aero-ribbon" style={{ animationDelay: '-4s' }} />
-          <div
-            className="ecs-aero-orb ecs-aero-orb--a motion-safe:animate-ecs-aero-float"
-            style={{ animationDelay: '-5s' }}
-          />
-          <div
-            className="ecs-aero-orb ecs-aero-orb--b motion-safe:animate-ecs-aero-float"
-            style={{ animationDelay: '-11s' }}
-          />
-          <div
-            className="ecs-aero-orb ecs-aero-orb--c motion-safe:animate-ecs-aero-float"
-            style={{ animationDelay: '-17s' }}
-          />
-          <div className="absolute inset-0 ecs-grid-wash opacity-80" />
-          <div className="ecs-aero-vignette" />
-        </div>
-        <div className="ecs-palette-layer ecs-palette-layer--teal">
-          <div className="ecs-win98-wallpaper" />
-          <div className="ecs-win98-pixel-grid" />
-        </div>
-        <div className="ecs-palette-layer ecs-palette-layer--sunset">
-          <div className="ecs-y2k-space" />
-          <div className="ecs-y2k-glow-ribbon motion-safe:animate-ecs-aero-ribbon" />
-          <div className="ecs-y2k-grid-floor" />
-        </div>
-        <div className="ecs-palette-layer ecs-palette-layer--wii ecs-wii-scene">
-          <div className="ecs-wii-backdrop" />
-          <div className="ecs-wii-channel-grid" />
-          <div className="ecs-wii-pane-matrix" />
-          <div className="ecs-wii-focus-dot motion-safe:animate-ecs-pulse-soft" />
-          <div
-            className="ecs-wii-shine-bubble left-[8%] top-[22%] h-[min(52vmin,380px)] w-[min(52vmin,380px)] motion-safe:animate-ecs-wii-drift"
-            aria-hidden
-          />
-          <div
-            className="ecs-wii-shine-bubble bottom-[12%] right-[6%] h-[min(40vmin,300px)] w-[min(56vmin,400px)] opacity-35 motion-safe:animate-ecs-wii-drift"
-            style={{ animationDelay: '-9s' }}
-            aria-hidden
-          />
-        </div>
-        <div className="ecs-palette-layer ecs-palette-layer--xmb ecs-xmb-scene">
-          <div className="ecs-xmb-backdrop" />
-          <div className="ecs-xmb-wave-layer motion-safe:animate-ecs-xmb-wave" />
-          <div className="ecs-xmb-wave-layer ecs-xmb-wave-layer--secondary motion-safe:animate-ecs-xmb-wave" />
-          <div className="ecs-xmb-column-guides" />
-          <div className="ecs-xmb-spark-grid" />
-        </div>
-        <div className="ecs-palette-layer ecs-palette-layer--cube ecs-cube-scene">
-          <div className="ecs-cube-backdrop" />
-          <div className="ecs-cube-facet-grid" />
-          <div className="ecs-cube-ghost-cube ecs-cube-ghost-cube--a motion-safe:animate-ecs-cube-drift" />
-          <div className="ecs-cube-ghost-cube ecs-cube-ghost-cube--b motion-safe:animate-ecs-cube-drift" style={{ animationDelay: '-8s' }} />
-          <div className="ecs-cube-lime-pulse motion-safe:animate-ecs-aero-float" />
-        </div>
-        <div className="ecs-palette-layer ecs-palette-layer--wiiu ecs-wiiu-scene">
-          <div className="ecs-wiiu-backdrop" />
-          <div className="ecs-wiiu-tile-grid" />
-        </div>
-        <div className="ecs-palette-layer ecs-palette-layer--3ds ecs-3ds-scene">
-          <div className="ecs-3ds-backdrop" />
-          <div className="ecs-3ds-dot-grid" />
-        </div>
-      </div>
-      <div className={cn('relative mx-auto ecs-workspace-flow', workspaceShellClass)}>
-        <header className={headerChrome} data-region="header">
+      ) : null}
+      <EcsPaletteBackdrop />
+      <div
+        className={cn(
+          'relative mx-auto',
+          workspaceShellClass,
+          layoutEditMode &&
+            'rounded-xl outline outline-1 outline-dashed outline-amber-400/45 outline-offset-1 dark:outline-amber-500/35'
+        )}
+      >
+        <DevToolsPanel
+          open={showDevPanel}
+          onClose={() => setShowDevPanel(false)}
+          activeTab={devPanelTab}
+          setActiveTab={setDevPanelTab}
+          colorScheme={colorScheme}
+          setColorScheme={setColorScheme}
+          themeMode={themeMode}
+          setThemeMode={setThemeMode}
+          useThemeLayout={useThemeLayout}
+          setUseThemeLayout={setUseThemeLayout}
+          mergeGeneratedAttacks={mergeGeneratedAttacks}
+          persistThemePerAccount={persistThemePerAccount}
+          uiSoundsEnabled={uiSoundsEnabled}
+          beeThemeUnlocked={beeThemeUnlocked}
+          rulesMode={rulesMode}
+          setRulesMode={setRulesMode}
+          cornerStyle={cornerStyle}
+          chromeWeight={chromeWeight}
+          sidebarPlacement={sidebarPlacement}
+          sidebarWidth={sidebarWidth}
+          workspaceDensity={workspaceDensity}
+          workspaceFlow={workspaceFlow}
+          regionFlowCustom={regionFlowCustom}
+          activeUiPresetId={activeUiPresetId}
+          layoutEditMode={layoutEditMode}
+          activeAccountId={activeAccountId}
+          characters={characters}
+          campaigns={campaigns}
+          campaignMembers={campaignMembers}
+          workspaceTab={workspaceTab}
+          selectedCampaignId={selectedCampaignId}
+          editor={editor}
+          battleParticipants={battleParticipants}
+          battleDrafts={battleDrafts}
+          encounterRound={encounterRound}
+          setAppMessage={setAppMessage}
+          reloadCharacters={() => loadCharacters(activeAccountId ?? '', selectedCampaignId)}
+          guidedSetup={guidedSetup}
+          setGuidedSetup={setGuidedSetup}
+          setLayoutEditMode={setLayoutEditMode}
+          setShowThemeMenu={setShowThemeMenu}
+          setShowSettingsMenu={setShowSettingsMenu}
+          setWorkspaceTab={setWorkspaceTab}
+          compactCreator={compactCreator}
+          setCompactCreator={setCompactCreator}
+          compactBattle={compactBattle}
+          setCompactBattle={setCompactBattle}
+          setMergeGeneratedAttacks={setMergeGeneratedAttacks}
+          setCornerStyle={setCornerStyle}
+          setChromeWeight={setChromeWeight}
+          setWorkspaceDensity={setWorkspaceDensity}
+          setSidebarPlacement={setSidebarPlacement}
+          setSidebarWidth={setSidebarWidth}
+          setUiSoundsEnabled={setUiSoundsEnabled}
+          setPersistThemePerAccount={setPersistThemePerAccount}
+          setActiveUiPresetId={setActiveUiPresetId}
+          uiCopyOverrides={uiCopyOverrides}
+          setUiCopyOverrides={setUiCopyOverrides}
+        >
+        <div className="ecs-workspace-flow">
+        <header
+          className={headerChrome}
+          data-region="header"
+          style={{ order: workspaceFlow.indexOf('header') }}
+        >
           {colorScheme === 'teal' ? (
             <>
               <div
-                className="pointer-events-none absolute left-0 right-0 top-0 h-2 rounded-t-[5px] bg-gradient-to-r from-[#000080] to-[#1084d0]"
+                className="pointer-events-none absolute left-0 right-0 top-0 h-2 rounded-none bg-gradient-to-r from-[#000080] to-[#1084d0]"
                 aria-hidden
               />
               <div
@@ -1828,9 +4225,15 @@ export default function App(): JSX.Element {
               </div>
             </>
           ) : null}
-          {colorScheme === 'xmb' ? (
+          {colorScheme === 'ps3' ? (
             <div
               className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-sky-400/75 to-transparent"
+              aria-hidden
+            />
+          ) : null}
+          {colorScheme === 'xbox360' ? (
+            <div
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-lime-400/65 to-transparent"
               aria-hidden
             />
           ) : null}
@@ -1859,26 +4262,134 @@ export default function App(): JSX.Element {
           ) : null}
           <div className="relative z-[1] flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h1 className={cn('text-2xl font-bold', colorScheme === 'sunset' && 'ecs-y2k-text-glow')}>
-                Campaign Manager
+              <h1
+                className={cn(
+                  'ecs-product-wordmark text-3xl font-bold tracking-tight sm:text-4xl',
+                  colorScheme === 'sunset' && 'ecs-y2k-text-glow'
+                )}
+              >
+                {t('app.productTitle')}
               </h1>
-              <p className={cn('text-sm', headerSubtitleClass)}>Track characters, campaigns, and encounters.</p>
+              <p className={cn('ecs-product-tagline mt-2 max-w-xl text-sm leading-relaxed', headerSubtitleClass)}>
+                {t('app.productTagline')}
+              </p>
             </div>
             <div className="relative flex flex-wrap items-center gap-2">
+              {devModeUnlocked ? (
+                <button
+                  type="button"
+                  onClick={() => setShowDevPanel(true)}
+                  aria-expanded={showDevPanel}
+                  title="Open the Workshop docked beside the workspace (themes, layout, paths, UI copy)"
+                  className="ecs-interactive inline-flex min-h-[2.75rem] items-center gap-2 rounded-xl border-2 border-zinc-500 bg-zinc-900 px-5 py-2.5 text-sm font-black uppercase tracking-wide text-white shadow-lg hover:bg-zinc-800 dark:border-zinc-400 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+                >
+                  <span aria-hidden className="text-lg leading-none">
+                    ◆
+                  </span>
+                  <span>Workshop</span>
+                </button>
+              ) : null}
+              <div
+                className="inline-flex overflow-hidden rounded-lg border border-slate-300 text-xs font-semibold dark:border-slate-600"
+                role="group"
+                aria-label="Character sheet rules mode"
+              >
+                <button
+                  type="button"
+                  aria-pressed={rulesMode === 'ttrpg'}
+                  onClick={() => setRulesMode('ttrpg')}
+                  title="Lightweight generic character sheet"
+                  className={cn(
+                    'ecs-interactive px-2.5 py-1.5 transition-colors',
+                    rulesMode === 'ttrpg'
+                      ? 'bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/70'
+                  )}
+                >
+                  TTRPG
+                </button>
+                <button
+                  type="button"
+                  aria-pressed={rulesMode === 'dnd'}
+                  onClick={() => setRulesMode('dnd')}
+                  title="DnD 5e-style abilities, skills, and sheet"
+                  className={cn(
+                    'ecs-interactive border-l border-slate-300 px-2.5 py-1.5 transition-colors dark:border-slate-600',
+                    rulesMode === 'dnd'
+                      ? 'bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900'
+                      : 'bg-transparent text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/70'
+                  )}
+                >
+                  DnD
+                </button>
+              </div>
+              <button
+                type="button"
+                aria-pressed={layoutEditMode}
+                onClick={() => {
+                  setShowThemeMenu(false)
+                  setShowSettingsMenu(false)
+                  setLayoutEditMode((prev) => !prev)
+                }}
+                title={
+                  layoutEditMode
+                    ? 'Exit workspace order mode'
+                    : 'Reorder title bar, status strip, and main column (bottom panel)'
+                }
+                className={cn(
+                  'ecs-interactive inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold active:brightness-95',
+                  layoutEditMode
+                    ? 'border-amber-500 bg-amber-100 text-amber-950 shadow-sm dark:border-amber-400 dark:bg-amber-500/20 dark:text-amber-50'
+                    : 'border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/70'
+                )}
+              >
+                <span aria-hidden className="text-sm leading-none">
+                  ⇅
+                </span>
+                <span className="hidden sm:inline">Layout</span>
+                <span className="sm:hidden">Move UI</span>
+              </button>
+              <button
+                ref={themeMenuButtonRef}
+                type="button"
+                onClick={() => {
+                  setShowSettingsMenu(false)
+                  setShowThemeMenu((prev) => !prev)
+                }}
+                aria-haspopup="dialog"
+                aria-expanded={showThemeMenu}
+                title="Themes, layout, and appearance"
+                className="ecs-interactive inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 active:brightness-95 dark:border-slate-700 dark:hover:bg-slate-800/70"
+              >
+                <span aria-hidden className="text-sm leading-none">
+                  ◐
+                </span>
+                <span>Theme</span>
+              </button>
               <button
                 ref={settingsButtonRef}
                 type="button"
-                onClick={() => setShowSettingsMenu((prev) => !prev)}
-                className="ecs-interactive rounded-lg border border-slate-300 px-3 py-1 text-xs font-semibold uppercase hover:bg-slate-50 active:brightness-95 dark:border-slate-700 dark:hover:bg-slate-800/70"
+                onClick={() => {
+                  setShowThemeMenu(false)
+                  setShowSettingsMenu((prev) => !prev)
+                }}
+                aria-haspopup="dialog"
+                aria-expanded={showSettingsMenu}
+                title="Open workspace settings"
+                className="ecs-interactive inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 active:brightness-95 dark:border-slate-700 dark:hover:bg-slate-800/70"
               >
-                Settings
+                <span aria-hidden className="text-sm leading-none">⚙</span>
+                <span>Settings</span>
               </button>
+              <span aria-hidden className="hidden h-5 w-px bg-slate-300/70 sm:inline-block dark:bg-slate-700/70" />
               <button
                 type="button"
                 onClick={() => void handleLogout('Logged out.')}
-                className="ecs-interactive rounded-lg border border-rose-300 px-3 py-1 text-xs font-semibold text-rose-700 hover:bg-rose-50 active:brightness-95 dark:border-rose-500/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                title="Sign out of this workspace"
+                className="ecs-interactive inline-flex items-center gap-1.5 rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 active:brightness-95 dark:border-rose-500/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
               >
-                Logout
+                <span aria-hidden className="text-sm leading-none">⏻</span>
+                <span>Logout</span>
               </button>
             </div>
           </div>
@@ -1897,339 +4408,712 @@ export default function App(): JSX.Element {
 
         <div
           data-region="status"
-          className="ecs-workspace-status flex flex-wrap gap-2 motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:55ms]"
+          style={{ order: workspaceFlow.indexOf('status') }}
+          className="ecs-workspace-status flex flex-col gap-2 motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:55ms]"
         >
-          <div className={statusPill}>
-            Mode: <span className="font-semibold">{rulesMode === 'dnd' ? 'DnD' : 'TTRPG'}</span>
+          <div className="flex flex-wrap gap-2">
+            <div className={statusPill}>
+              Mode: <span className="font-semibold">{rulesMode === 'dnd' ? 'DnD' : 'TTRPG'}</span>
+            </div>
+            <div className={statusPill}>
+              Characters: <span className="font-semibold">{characters.length}</span>
+            </div>
+            <div className={statusPill}>
+              {t('workspace.campaignLabel')}: <span className="font-semibold">{activeCampaign?.name ?? 'Personal'}</span>
+            </div>
           </div>
-          <div className={statusPill}>
-            Characters: <span className="font-semibold">{characters.length}</span>
-          </div>
-          <div className={statusPill}>
-            Campaign: <span className="font-semibold">{activeCampaign?.name ?? 'Personal'}</span>
+          <div
+            className={cn(
+              'w-full rounded-xl border border-slate-200/80 bg-white/50 px-3 py-2 dark:border-slate-700/80 dark:bg-slate-950/30',
+              cardClass
+            )}
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                {t('activity.heading')}
+              </span>
+              {activityFeed.length > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setActivityFeed([])}
+                  className="ecs-interactive rounded-md border border-slate-300 px-2 py-0.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800/60"
+                >
+                  Clear
+                </button>
+              ) : null}
+            </div>
+            {activityFeed.length === 0 ? (
+              <p className="mt-1 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                {t('activity.emptyBlurb')}
+              </p>
+            ) : (
+              <ul
+                className="mt-1 max-h-28 space-y-1 overflow-y-auto pr-1 text-[11px] leading-snug text-slate-600 dark:text-slate-300"
+                aria-label="Recent workspace activity"
+                aria-live="polite"
+              >
+                {activityFeed.map((entry) => (
+                  <li key={entry.entryId}>
+                    <span className="whitespace-nowrap font-mono text-[10px] text-slate-400 dark:text-slate-500">
+                      {formatLocalActivityTime(entry.at)}
+                    </span>{' '}
+                    <span className="font-semibold text-slate-800 dark:text-slate-100">
+                      {activeAccountId && entry.actorAccountId === activeAccountId ? 'You' : entry.actorDisplayName}
+                    </span>{' '}
+                    <span className="text-slate-600 dark:text-slate-300">{entry.summary}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
 
-        <div className={workspaceGridClass} data-region="grid">
-          <aside className={cn('rounded-3xl p-5 shadow-sm lg:sticky lg:top-5 lg:h-fit', cardClass)}>
-            <h2 className="text-sm font-bold uppercase tracking-wide">Campaigns</h2>
-            {guidedSetup ? (
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Pick a campaign for shared play, or stay in personal mode.
-              </p>
-            ) : null}
-            <select
-              value={selectedCampaignId ?? ''}
-              onChange={(event) => setSelectedCampaignId(event.target.value || null)}
-              className="mt-2 w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
-            >
-              <option value="">Personal</option>
-              {campaigns.map((campaign) => (
-                <option key={campaign.id} value={campaign.id}>
-                  {campaign.name}
-                </option>
-              ))}
-            </select>
-            {activeCampaign ? (
-              <p className="mt-2 text-xs text-slate-500 dark:text-slate-300">
-                Share code: <span className="font-mono font-semibold">{activeCampaign.code}</span>
-              </p>
-            ) : null}
-            {selectedCampaignId ? (
-              <div className="mt-2 rounded-lg border border-slate-200 p-2 text-xs dark:border-slate-700">
-                <div className="font-semibold">Campaign members</div>
-                {campaignMembers.length === 0 ? (
-                  <div className="mt-1 text-slate-500 dark:text-slate-400">No members loaded.</div>
-                ) : (
-                  <ul className="mt-1 space-y-1">
-                    {campaignMembers.map((member) => (
-                      <li key={member.id}>
-                        {member.displayName} <span className="text-slate-500">({member.email})</span>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-                <button
-                  type="button"
-                  onClick={() => void handleLeaveCampaign()}
-                  className="mt-2 w-full rounded-md border border-rose-300 px-2 py-1 font-semibold text-rose-700 dark:border-rose-500/40 dark:text-rose-300"
-                >
-                  Leave campaign
-                </button>
+        <div className={workspaceGridClass} data-region="grid" style={{ order: workspaceFlow.indexOf('grid') }}>
+          <aside className={cn(workspaceShellRound, 'min-w-0 p-4 shadow-sm lg:sticky lg:top-5 lg:h-fit', cardClass)}>
+            <div className="flex items-baseline justify-between gap-2">
+              <h2 className="text-sm font-bold uppercase tracking-wide">{t('sidebar.charactersHeading')}</h2>
+              <span className="shrink-0 text-[10px] text-slate-500 dark:text-slate-400">
+                {filteredCharacters.length} of {characters.length}
+              </span>
+            </div>
+            {selectedCampaignId && workspaceTab === 'battle' ? (
+              <div className="mt-1.5 rounded-lg border border-indigo-200 bg-indigo-50/70 px-2 py-1 text-[10px] leading-snug text-indigo-900 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-100">
+                <span aria-hidden className="mr-1">⠿</span>
+                {t('sidebar.battleDragHint')}
               </div>
             ) : null}
-            <button
-              type="button"
-              onClick={() => setShowAdvancedCampaignTools((prev) => !prev)}
-              className="mt-2 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold dark:border-slate-700"
-            >
-              {showAdvancedCampaignTools ? 'Hide campaign tools' : 'Show campaign tools'}
-            </button>
-            {showAdvancedCampaignTools ? (
-              <div className="mt-2">
+            <div className="mt-2 space-y-1.5">
+              <div className="relative">
+                <span aria-hidden className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-slate-400">
+                  🔍
+                </span>
                 <input
-                  value={newCampaignName}
-                  onChange={(event) => setNewCampaignName(event.target.value)}
-                  placeholder="Create campaign"
-                  className="w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
+                  value={search}
+                  onChange={(event) => setSearch(event.target.value)}
+                  placeholder={t('sidebar.searchPlaceholder')}
+                  aria-label="Search characters"
+                  className="w-full rounded-lg border border-slate-300 bg-transparent py-1.5 pl-6 pr-7 text-xs dark:border-slate-700"
                 />
-                <button
-                  type="button"
-                  onClick={() => void createCampaign()}
-                  className="mt-2 w-full rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99]"
-                >
-                  Create
-                </button>
-                <div className="mt-2 flex gap-2">
-                  <input
-                    value={joinCode}
-                    onChange={(event) => setJoinCode(event.target.value)}
-                    placeholder="Join code"
-                    className="w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
-                  />
+                {search ? (
                   <button
                     type="button"
-                    onClick={() => void joinCampaign()}
-                    className="rounded-lg bg-emerald-600 px-3 py-2 text-sm font-semibold text-white transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99]"
+                    onClick={() => setSearch('')}
+                    aria-label="Clear search"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 rounded p-0.5 text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800/50 dark:hover:text-slate-200"
+                  >
+                    ×
+                  </button>
+                ) : null}
+              </div>
+              {factionOptions.length > 0 ? (
+                <select
+                  value={factionFilter}
+                  onChange={(event) => setFactionFilter(event.target.value)}
+                  aria-label="Filter by faction"
+                  className="w-full rounded-lg border border-slate-300 bg-transparent px-2 py-1.5 text-xs dark:border-slate-700"
+                >
+                  <option value="all">All factions</option>
+                  {factionOptions.map((faction) => (
+                    <option key={faction} value={faction}>
+                      {faction}
+                    </option>
+                  ))}
+                </select>
+              ) : null}
+            </div>
+            <button
+              type="button"
+              onClick={openQuickCreate}
+              title="Guided 4-step character creation"
+              className={cn(
+                'mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99]',
+                scheme.primary
+              )}
+            >
+              <span aria-hidden>＋</span>
+              <span>{t('sidebar.newCharacter')}</span>
+            </button>
+            {filteredCharacters.length === 0 ? (
+              <div className="mt-2 rounded-lg border border-dashed border-slate-300 px-2 py-3 text-center text-[11px] text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                {characters.length === 0 ? t('sidebar.emptyRoster') : t('sidebar.emptyFilter')}
+              </div>
+            ) : (
+              <ul className="ecs-character-list mt-2 space-y-1.5">
+                {filteredCharacters.map((character) => {
+                  const isDraggable = Boolean(selectedCampaignId && workspaceTab === 'battle' && !layoutEditMode)
+                  return (
+                    <li key={character.id}>
+                      <button
+                        type="button"
+                        draggable={isDraggable}
+                        onDragStart={() => setDragCharacterId(character.id)}
+                        onDragEnd={() => setDragCharacterId(null)}
+                        onClick={() => openCharacter(character)}
+                        title={isDraggable ? `Click to open • drag to add to battle` : 'Open character'}
+                        className={cn(
+                          'flex w-full items-center gap-2 border px-2 py-1.5 text-left motion-safe:transition-[border-color,box-shadow,background-color] motion-safe:duration-200 motion-safe:hover:shadow-md motion-safe:hover:border-slate-300 dark:motion-safe:hover:border-slate-600',
+                          ecsCharacterRowRound(colorScheme),
+                          isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
+                          selectedId === character.id
+                            ? characterRowSelected
+                            : 'border-slate-200 dark:border-slate-700'
+                        )}
+                      >
+                        {isDraggable ? (
+                          <span aria-hidden className="text-slate-400 dark:text-slate-500" title="Draggable">
+                            ⠿
+                          </span>
+                        ) : null}
+                        {character.portraitRelativePath ? (
+                          <span className="ecs-portrait-hex h-10 w-9 shrink-0 overflow-hidden bg-slate-200 dark:bg-slate-800">
+                            <img
+                              alt=""
+                              src={ecsPortraitSrc(character.portraitRelativePath)}
+                              className="h-full w-full object-cover"
+                            />
+                          </span>
+                        ) : (
+                          <span className="flex h-10 w-9 shrink-0 items-center justify-center rounded-lg border border-dashed border-slate-300 text-[10px] text-slate-400 dark:border-slate-600 dark:text-slate-500">
+                            —
+                          </span>
+                        )}
+                        <div className="min-w-0 flex-1">
+                          <div className="truncate text-xs font-semibold">{character.name}</div>
+                          <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                            <span className="font-mono">
+                              {character.hpCurrent}/{character.hpMax}
+                            </span>
+                            <span className="mx-1 text-slate-400">HP</span>
+                            {character.factionGroup ? (
+                              <>
+                                <span className="text-slate-400">·</span>{' '}
+                                <span className="truncate">{character.factionGroup}</span>
+                              </>
+                            ) : null}
+                          </div>
+                        </div>
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            )}
+
+            <div className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-700">
+              <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                {t('sidebar.sharingHeading')}
+              </h3>
+              {guidedSetup ? (
+                <p className="mt-1 text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                  {t('sidebar.guidedBlurb')}
+                </p>
+              ) : null}
+
+              {activeCampaign ? (
+                <>
+                  <div className="mt-1.5 flex min-w-0 items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50/70 px-2 py-1 dark:border-slate-700 dark:bg-slate-900/40">
+                    <span
+                      className="min-w-0 flex-1 truncate font-mono text-[11px] font-semibold text-slate-800 dark:text-slate-100"
+                      title={activeCampaign.code}
+                    >
+                      {activeCampaign.code}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        void navigator.clipboard.writeText(activeCampaign.code)
+                        setAppMessage(`Copied ${activeCampaign.code} to clipboard.`)
+                      }}
+                      className="ecs-interactive shrink-0 rounded border border-slate-300 px-1.5 py-0.5 text-[10px] font-semibold hover:bg-white dark:border-slate-600 dark:hover:bg-slate-800/80"
+                      title="Copy join code"
+                    >
+                      Copy
+                    </button>
+                  </div>
+                  <details className="mt-1.5 rounded-md border border-slate-200 dark:border-slate-700">
+                    <summary className="cursor-pointer select-none list-none px-2 py-1 text-[10px] font-semibold text-slate-600 marker:content-none dark:text-slate-300 [&::-webkit-details-marker]:hidden">
+                      <span className="flex items-center justify-between gap-2">
+                        <span>Members & leave</span>
+                        <span className="font-normal text-slate-400">{campaignMembers.length}</span>
+                      </span>
+                    </summary>
+                    <div className="border-t border-slate-200 px-2 pb-2 pt-1.5 dark:border-slate-700">
+                      {campaignMembers.length === 0 ? (
+                        <div className="text-[10px] text-slate-500 dark:text-slate-400">No members loaded yet.</div>
+                      ) : (
+                        <ul className="max-h-20 space-y-0.5 overflow-y-auto text-[10px] leading-tight">
+                          {campaignMembers.map((member) => (
+                            <li key={member.id} className="truncate">
+                              <span className="font-medium">{member.displayName}</span>{' '}
+                              <span className="text-slate-500">({member.email})</span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => void handleLeaveCampaign()}
+                        className="mt-2 w-full rounded border border-rose-300 px-2 py-1 text-[10px] font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                      >
+                        Leave campaign
+                      </button>
+                    </div>
+                  </details>
+                </>
+              ) : null}
+
+              <div className="mt-2 rounded-md border border-slate-200 p-1.5 dark:border-slate-700">
+                <div role="tablist" aria-label="Add a campaign" className="flex gap-0.5">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={campaignAddMode === 'create'}
+                    onClick={() => setCampaignAddMode('create')}
+                    className={cn(
+                      'flex-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors',
+                      campaignAddMode === 'create'
+                        ? `${scheme.primary} text-white`
+                        : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/50'
+                    )}
+                  >
+                    Create
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={campaignAddMode === 'join'}
+                    onClick={() => setCampaignAddMode('join')}
+                    className={cn(
+                      'flex-1 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide transition-colors',
+                      campaignAddMode === 'join'
+                        ? `${scheme.primary} text-white`
+                        : 'text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-800/50'
+                    )}
                   >
                     Join
                   </button>
                 </div>
-              </div>
-            ) : null}
-
-            <div className="mt-5 border-t border-slate-200 pt-4 dark:border-slate-700">
-              <h3 className="text-sm font-bold uppercase tracking-wide">Characters</h3>
-              {showFirstDragHint && selectedCampaignId && workspaceTab === 'battle' ? (
-                <div className="mt-2 rounded-lg border border-indigo-300 bg-indigo-50 px-3 py-2 text-xs text-indigo-900 dark:border-indigo-500/40 dark:bg-indigo-500/10 dark:text-indigo-100">
-                  First time? Drag any character card into the encounter area on the right.
-                </div>
-              ) : null}
-              <input
-                value={search}
-                onChange={(event) => setSearch(event.target.value)}
-                placeholder="Search..."
-                className="mt-2 w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
-              />
-              <select
-                value={factionFilter}
-                onChange={(event) => setFactionFilter(event.target.value)}
-                className="mt-2 w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
-              >
-                <option value="all">All factions</option>
-                {factionOptions.map((faction) => (
-                  <option key={faction} value={faction}>
-                    {faction}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={newCharacter}
-                className={cn(
-                  'mt-2 w-full rounded-lg px-3 py-2 text-sm font-semibold text-white transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99]',
-                  scheme.primary
-                )}
-              >
-                New Character
-              </button>
-              <ul className="ecs-character-list mt-3 space-y-2">
-                {filteredCharacters.map((character) => (
-                  <li key={character.id}>
+                {campaignAddMode === 'create' ? (
+                  <div className="mt-1.5">
+                    <label htmlFor="campaign-name" className="sr-only">
+                      New campaign name
+                    </label>
+                    <input
+                      id="campaign-name"
+                      value={newCampaignName}
+                      onChange={(event) => setNewCampaignName(event.target.value)}
+                      placeholder="Campaign name…"
+                      className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-700"
+                    />
                     <button
                       type="button"
-                      draggable={Boolean(selectedCampaignId && workspaceTab === 'battle')}
-                      onDragStart={() => setDragCharacterId(character.id)}
-                      onDragEnd={() => setDragCharacterId(null)}
-                      onClick={() => openCharacter(character)}
+                      onClick={() => void createCampaign()}
+                      disabled={!newCampaignName.trim()}
                       className={cn(
-                        'flex w-full gap-2 border px-2 py-2 text-left motion-safe:transition-[border-color,box-shadow,background-color] motion-safe:duration-200 motion-safe:hover:shadow-md motion-safe:hover:border-slate-300 dark:motion-safe:hover:border-slate-600',
-                        ecsCharacterRowRound(colorScheme),
-                        selectedId === character.id
-                          ? characterRowSelected
-                          : 'border-slate-200 dark:border-slate-700'
+                        'mt-1.5 w-full rounded px-2 py-1 text-[10px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40',
+                        scheme.primary
                       )}
                     >
-                      {character.portraitRelativePath ? (
-                        <span className="ecs-portrait-hex h-11 w-10 shrink-0 overflow-hidden bg-slate-200 dark:bg-slate-800">
-                          <img
-                            alt=""
-                            src={ecsPortraitSrc(character.portraitRelativePath)}
-                            className="h-full w-full object-cover"
-                          />
-                        </span>
-                      ) : (
-                        <span className="flex h-11 w-10 shrink-0 items-center justify-center rounded-lg border border-dashed border-slate-300 text-[10px] text-slate-400 dark:border-slate-600 dark:text-slate-500">
-                          —
-                        </span>
-                      )}
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-semibold">
-                          {selectedCampaignId && workspaceTab === 'battle' ? (
-                            <span className="mr-1 text-slate-400">::</span>
-                          ) : null}
-                          {character.name}
-                        </div>
-                        <div className="text-xs text-slate-500 dark:text-slate-400">
-                          H{character.hpCurrent}/{character.hpMax}
-                          {character.factionGroup ? ` • ${character.factionGroup}` : ''}
-                        </div>
-                      </div>
+                      Create campaign
                     </button>
-                  </li>
-                ))}
-              </ul>
+                  </div>
+                ) : (
+                  <div className="mt-1.5">
+                    <label htmlFor="campaign-code" className="sr-only">
+                      Campaign join code
+                    </label>
+                    <input
+                      id="campaign-code"
+                      value={joinCode}
+                      onChange={(event) => setJoinCode(event.target.value)}
+                      placeholder="Share code"
+                      className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs font-mono dark:border-slate-700"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => void joinCampaign()}
+                      disabled={!joinCode.trim()}
+                      className={cn(
+                        'mt-1.5 w-full rounded px-2 py-1 text-[10px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40',
+                        scheme.secondary
+                      )}
+                    >
+                      Join campaign
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           </aside>
 
-          <main className="space-y-5">
-            <section className={cn('rounded-3xl p-4 shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/40', cardClass)}>
+          <main className="min-h-min min-w-0 space-y-5">
+            <section className={cn(workspaceShellRound, 'p-4 shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/40', cardClass)}>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                <div role="tablist" aria-label="Workspace view" className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={wsTab === 'home'}
+                    aria-controls="workspace-tab-panel"
+                    onClick={() => setWorkspaceTab('home')}
+                    className={cn(
+                      'rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition duration-150 motion-safe:active:scale-[0.98]',
+                      wsTab === 'home'
+                        ? `${scheme.primary} text-white hover:brightness-110 active:brightness-95`
+                        : 'ecs-interactive border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50'
+                    )}
+                    >
+                    {t('workspace.home')}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={workspaceTab === 'sheet'}
+                    aria-controls="workspace-tab-panel"
+                    onClick={() => setWorkspaceTab('sheet')}
+                    className={cn(
+                      'rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition duration-150 motion-safe:active:scale-[0.98]',
+                      workspaceTab === 'sheet'
+                        ? `${scheme.primary} text-white hover:brightness-110 active:brightness-95`
+                        : 'ecs-interactive border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50'
+                    )}
+                    >
+                    {t('workspace.sheet')}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={workspaceTab === 'battle'}
+                    aria-controls="workspace-tab-panel"
+                    disabled={!selectedCampaignId}
+                    onClick={() => setWorkspaceTab('battle')}
+                    className={cn(
+                      'rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition duration-150 motion-safe:active:scale-[0.98]',
+                      workspaceTab === 'battle'
+                        ? `${scheme.secondary} text-white hover:brightness-110 active:brightness-95`
+                        : 'ecs-interactive border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50',
+                      !selectedCampaignId ? 'cursor-not-allowed opacity-50' : null
+                    )}
+                    title={
+                      selectedCampaignId ? 'Switch to encounter tracking' : t('workspace.battleLockedHint')
+                    }
+                  >
+                    {t('workspace.battle')}
+                  </button>
+                </div>
+
+                <div className="flex min-w-[min(100%,11rem)] flex-[1_1_14rem] flex-wrap items-center gap-2">
+                  {selectedCampaignId ? (
+                    <span className="shrink-0 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-emerald-700 dark:text-emerald-300">
+                      Shared
+                    </span>
+                  ) : (
+                    <span className="shrink-0 rounded-full bg-slate-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-slate-600 dark:text-slate-300">
+                      Personal
+                    </span>
+                  )}
+                  <label htmlFor="header-campaign-select" className="sr-only">
+                    Active campaign
+                  </label>
+                  <select
+                    id="header-campaign-select"
+                    value={selectedCampaignId ?? ''}
+                    onChange={(event) => setSelectedCampaignId(event.target.value || null)}
+                    className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-transparent px-2 py-1.5 text-xs dark:border-slate-700"
+                    title="Switch personal workspace or a shared campaign"
+                  >
+                    <option value="">{t('workspace.personalWorkspace')}</option>
+                    {campaigns.length > 0 ? (
+                      <optgroup label="Shared campaigns">
+                        {campaigns.map((campaign) => (
+                          <option key={campaign.id} value={campaign.id}>
+                            {campaign.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : null}
+                  </select>
+                </div>
+
+                {wsTab !== 'home' ? (
+                  <div className="flex shrink-0 items-center gap-2 sm:ml-auto">
+                    <label
+                      htmlFor="tab-density"
+                      className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400"
+                    >
+                      {workspaceTab === 'sheet' ? 'Editor' : 'Cards'}
+                    </label>
+                    <select
+                      id="tab-density"
+                      value={
+                        workspaceTab === 'sheet'
+                          ? compactCreator
+                            ? 'compact'
+                            : 'full'
+                          : compactBattle
+                            ? 'compact'
+                            : 'full'
+                      }
+                      onChange={(event) => {
+                        const compact = event.target.value === 'compact'
+                        if (workspaceTab === 'sheet') setCompactCreator(compact)
+                        else setCompactBattle(compact)
+                      }}
+                      className="rounded-md border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-700"
+                      title={
+                        workspaceTab === 'sheet'
+                          ? 'Compact hides large description fields. Full shows everything.'
+                          : 'Compact shows a tight stat row per fighter. Full expands per-card notes.'
+                      }
+                    >
+                      <option value="compact">Compact</option>
+                      <option value="full">Full</option>
+                    </select>
+                  </div>
+                ) : null}
+              </div>
+              {!selectedCampaignId ? (
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">{t('workspace.battleLockedHint')}</p>
+              ) : null}
+            </section>
+            {workspaceTab === 'home' ? (
+              <div className={cn('mx-auto w-full', loginShellMaxClass)}>
+                <div
+                  className={cn(loginShellGridClass, loginOuterChrome, colorScheme === 'teal' && 'p-3 sm:p-4')}
+                >
+                  <div className="flex min-h-0 flex-col gap-4 lg:min-h-[min(100%,calc(100vh-14rem))]">
+                    <section
+                      className={cn(
+                        'relative flex shrink-0 flex-col overflow-hidden bg-gradient-to-br p-6 shadow-md',
+                        colorScheme === 'violet' &&
+                          (useShapeSoft
+                            ? 'ecs-diagonal-strip rounded-[1.75rem]'
+                            : 'ecs-shape-banner ecs-diagonal-strip rounded-[1.75rem]'),
+                        colorScheme === 'sunset' &&
+                          (useShapeSoft
+                            ? 'ecs-diagonal-strip rounded-[1.75rem]'
+                            : 'ecs-shape-banner ecs-diagonal-strip rounded-[1.75rem]'),
+                        colorScheme === 'wii' &&
+                          'rounded-[2rem] border border-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.88)] dark:border-gray-600/45',
+                        colorScheme === 'ps3' &&
+                          'rounded-xl border border-slate-700/55 shadow-[inset_0_0_48px_rgba(0,0,0,0.35)]',
+                        colorScheme === 'xbox360' &&
+                          'rounded-lg border border-lime-700/25 shadow-[inset_0_0_40px_rgba(0,0,0,0.45),0_0_28px_rgba(74,222,128,0.08)]',
+                        colorScheme === 'cube' &&
+                          'rounded-[1.2rem] border border-indigo-300/45 shadow-[0_0_34px_rgba(99,102,241,0.24)] dark:border-indigo-400/35',
+                        colorScheme === 'bee' &&
+                          'rounded-[1.65rem] border-2 border-amber-300/75 shadow-[0_0_32px_rgba(245,158,11,0.22)] dark:border-amber-500/40',
+                        colorScheme === 'wiiu' &&
+                          'rounded-[1.5rem] border border-cyan-200/55 shadow-[0_0_30px_rgba(34,211,238,0.22)] dark:border-cyan-500/35',
+                        colorScheme === '3ds' &&
+                          'rounded-md border border-rose-300/70 shadow-[0_0_26px_rgba(244,63,94,0.22)] dark:border-rose-500/35',
+                        colorScheme === 'teal' &&
+                          'rounded-md border border-black/50 shadow-[4px_4px_0_rgba(0,0,0,0.14)] dark:border-black/55 dark:shadow-[4px_4px_0_rgba(0,0,0,0.35)]',
+                        colorScheme === 'default' &&
+                          'rounded-2xl border border-slate-200 shadow-md dark:border-slate-700',
+                        scheme.grad,
+                        !darkMode && colorScheme === 'sunset' && 'text-indigo-950',
+                        !darkMode && colorScheme === 'wii' && 'text-gray-900',
+                        !darkMode && colorScheme === 'wiiu' && 'text-cyan-900',
+                        !darkMode && colorScheme === '3ds' && 'text-rose-900',
+                        !darkMode && colorScheme === 'bee' && 'text-amber-950',
+                        !darkMode && colorScheme === 'default' && 'text-slate-900',
+                        (darkMode || !['sunset', 'wii', 'wiiu', '3ds', 'default', 'bee'].includes(colorScheme)) && 'text-white'
+                      )}
+                    >
+                      <div className="relative shrink-0">
+                        <div className={cn('text-xs font-semibold uppercase tracking-[0.25em]', loginHeroTypography.badge)}>
+                          {workspaceHomeHero.badge}
+                        </div>
+                        <h1 className={cn('mt-3 text-3xl font-bold leading-tight', loginHeroTypography.title)}>
+                          {workspaceHomeHero.title}
+                        </h1>
+                        <p className={cn('mt-2 max-w-xl text-sm leading-relaxed', loginHeroTypography.body)}>
+                          {workspaceHomeHero.body}
+                        </p>
+                      </div>
+                    </section>
+                    <LoginUpdateLog className="relative min-h-0 flex-1" colorScheme={colorScheme} />
+                  </div>
+
+                  <section className={cn(loginSignPanel, loginSignColumnClass, 'self-stretch')}>
+                    <h2 className={cn('text-xl font-bold tracking-tight', loginSignHeadingClass)}>Start</h2>
+                    <p className={cn('mt-1 text-sm leading-relaxed', loginIntroMuted)}>
+                      Open Sheet or Battle from here, or use the tabs under the header.
+                    </p>
+                    <div className="mt-4 flex flex-col gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setWorkspaceTab('sheet')}
+                        className={cn(
+                          'w-full px-4 py-2.5 text-sm font-semibold transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99]',
+                          ecsWideControlRound(colorScheme),
+                          scheme.primary
+                        )}
+                      >
+                        Character sheets
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!selectedCampaignId}
+                        onClick={() => setWorkspaceTab('battle')}
+                        title={selectedCampaignId ? 'Encounter tracker' : 'Choose a shared campaign in the sidebar first'}
+                        className={cn(
+                          'w-full px-4 py-2.5 text-sm font-semibold transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40',
+                          ecsWideControlRound(colorScheme),
+                          scheme.secondary
+                        )}
+                      >
+                        Battle board
+                      </button>
+                    </div>
+                  </section>
+                </div>
+              </div>
+            ) : null}
+            {(workspaceTab === 'sheet' || workspaceTab === 'battle') && (
+              <>
+            <section className={cn(workspaceShellRound, 'p-4 shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/40', cardClass)}>
+              {/* Toolbar: primary actions left, status right. Display toggles live in Settings. */}
               <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={newCharacter}
-                  className={cn(
-                    'rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.98]',
-                    scheme.primary
-                  )}
-                >
-                  New
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setShowQuickCreate(true)}
-                  className="ecs-interactive rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 motion-safe:active:scale-[0.98] dark:border-slate-700 dark:hover:bg-slate-800/50"
-                >
-                  Quick create
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void saveCharacter()}
-                  className={cn(
-                    'rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.98]',
-                    scheme.secondary
-                  )}
-                >
-                  Save
-                </button>
+                {/* Create group */}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={openQuickCreate}
+                    title="Guided 4-step character creation"
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.98]',
+                      scheme.primary
+                    )}
+                  >
+                    <span aria-hidden className="text-sm leading-none">＋</span>
+                    <span>{t('sidebar.newCharacter')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={newCharacter}
+                    title="Open a blank sheet for advanced editing"
+                    className="ecs-interactive rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 motion-safe:active:scale-[0.98] dark:border-slate-700 dark:hover:bg-slate-800/50"
+                  >
+                    Blank sheet
+                  </button>
+                </div>
+
+                <span aria-hidden className="hidden h-6 w-px bg-slate-300/70 sm:inline-block dark:bg-slate-700/70" />
+
+                {/* Persist group */}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => void saveCharacter()}
+                    title="Save the open character to your library"
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.98]',
+                      scheme.secondary
+                    )}
+                  >
+                    <span aria-hidden className="text-sm leading-none">💾</span>
+                    <span>Save</span>
+                  </button>
+                  {editor.id ? (
+                    <button
+                      type="button"
+                      onClick={() => void deleteCharacter()}
+                      title="Delete this character (cannot be undone)"
+                      className="ecs-interactive rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                    >
+                      Delete
+                    </button>
+                  ) : null}
+                </div>
+
+                <span aria-hidden className="hidden h-6 w-px bg-slate-300/70 sm:inline-block dark:bg-slate-700/70" />
+
+                {/* Generate group */}
                 <button
                   type="button"
                   onClick={() => void generateAttacks()}
-                  className={cn(
-                    'rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.98]',
-                    scheme.primary
-                  )}
+                  title="Build attacks from the character's keywords list"
+                  className="ecs-interactive inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
                 >
-                  Generate attacks
+                  <span aria-hidden className="text-sm leading-none">⚡</span>
+                  <span>Generate attacks</span>
                 </button>
+
                 {rulesMode === 'dnd' ? (
                   <>
-                    <button
-                      type="button"
-                      onClick={() => applyCharacterPreset('frontliner')}
-                      className="ecs-interactive rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 motion-safe:active:scale-[0.98] dark:border-slate-700 dark:hover:bg-slate-800/50"
-                    >
-                      Frontliner preset
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => applyCharacterPreset('caster')}
-                      className="ecs-interactive rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 motion-safe:active:scale-[0.98] dark:border-slate-700 dark:hover:bg-slate-800/50"
-                    >
-                      Caster preset
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => applyCharacterPreset('rogue')}
-                      className="ecs-interactive rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 motion-safe:active:scale-[0.98] dark:border-slate-700 dark:hover:bg-slate-800/50"
-                    >
-                      Rogue preset
-                    </button>
+                    <span aria-hidden className="hidden h-6 w-px bg-slate-300/70 sm:inline-block dark:bg-slate-700/70" />
+                    <div className="flex items-center gap-1" aria-label="Apply DnD class preset">
+                      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">Preset</span>
+                      <button
+                        type="button"
+                        onClick={() => applyCharacterPreset('frontliner')}
+                        className="ecs-interactive rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
+                      >
+                        Frontliner
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyCharacterPreset('caster')}
+                        className="ecs-interactive rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
+                      >
+                        Caster
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => applyCharacterPreset('rogue')}
+                        className="ecs-interactive rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
+                      >
+                        Rogue
+                      </button>
+                    </div>
                   </>
                 ) : null}
-                {selectedCampaignId ? (
-                  <button
-                    type="button"
-                    onClick={() => setWorkspaceTab((prev) => (prev === 'sheet' ? 'battle' : 'sheet'))}
-                    className="ecs-interactive rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 motion-safe:active:scale-[0.98] dark:border-slate-700 dark:hover:bg-slate-800/50"
+
+                {/* Status pinned right */}
+                <div className="ml-auto flex items-center gap-2">
+                  {selectedCampaignId && (workspaceTab === 'sheet' || workspaceTab === 'battle') ? (
+                    <button
+                      type="button"
+                      onClick={() => setWorkspaceTab((prev) => (prev === 'sheet' ? 'battle' : 'sheet'))}
+                      className="ecs-interactive rounded-lg border border-slate-300 px-3 py-1 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
+                    >
+                      {workspaceTab === 'sheet' ? 'Go to battle' : 'Back to sheet'}
+                    </button>
+                  ) : null}
+                  <div
+                    className="rounded-full border border-slate-300/70 px-3 py-1 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400"
+                    title={selectedCampaignId ? 'Active shared campaign' : 'Personal — only you see these characters'}
                   >
-                    {workspaceTab === 'sheet' ? 'Open battle tab' : 'Back to sheet'}
-                  </button>
-                ) : null}
-                <button
-                  type="button"
-                  onClick={() => setGuidedSetup((prev) => !prev)}
-                  className="ecs-interactive rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 motion-safe:active:scale-[0.98] dark:border-slate-700 dark:hover:bg-slate-800/50"
-                >
-                  {guidedSetup ? 'Guided on' : 'Guided off'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCompactCreator((prev) => !prev)}
-                  className="ecs-interactive rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 motion-safe:active:scale-[0.98] dark:border-slate-700 dark:hover:bg-slate-800/50"
-                >
-                  {compactCreator ? 'Creator compact' : 'Creator full'}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setCompactBattle((prev) => !prev)}
-                  className="ecs-interactive rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 motion-safe:active:scale-[0.98] dark:border-slate-700 dark:hover:bg-slate-800/50"
-                >
-                  {compactBattle ? 'Battle compact' : 'Battle full'}
-                </button>
-                <div className="ml-auto rounded-full border border-slate-300/70 px-3 py-1 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                  {selectedCampaignId ? `Campaign: ${activeCampaign?.name ?? 'Unknown'}` : 'Personal workspace'}
+                    {selectedCampaignId ? `Campaign: ${activeCampaign?.name ?? 'Unknown'}` : 'Personal workspace'}
+                  </div>
                 </div>
               </div>
             </section>
 
-            <section className={cn('rounded-3xl p-4 shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/40', cardClass)}>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => setWorkspaceTab('sheet')}
-                  className={cn(
-                    'rounded-lg px-3 py-1.5 text-xs font-semibold uppercase transition duration-150 motion-safe:active:scale-[0.98]',
-                    workspaceTab === 'sheet'
-                      ? `${scheme.primary} text-white hover:brightness-110 active:brightness-95`
-                      : 'ecs-interactive border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50'
-                  )}
-                >
-                  Sheet
-                </button>
-                <button
-                  type="button"
-                  disabled={!selectedCampaignId}
-                  onClick={() => setWorkspaceTab('battle')}
-                  className={cn(
-                    'rounded-lg px-3 py-1.5 text-xs font-semibold uppercase transition duration-150 motion-safe:active:scale-[0.98]',
-                    workspaceTab === 'battle'
-                      ? `${scheme.secondary} text-white hover:brightness-110 active:brightness-95`
-                      : 'ecs-interactive border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50',
-                    !selectedCampaignId ? 'cursor-not-allowed opacity-50' : null
-                  )}
-                >
-                  Battle
-                </button>
-              </div>
-              {!selectedCampaignId ? (
-                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                  Select a campaign to unlock battle tracking.
-                </p>
-              ) : null}
-            </section>
-
             {workspaceTab === 'battle' && selectedCampaignId ? (
-              <section className={cn('rounded-3xl p-5 shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/40', cardClass)}>
-                <h2 className="text-lg font-semibold">Encounter Board</h2>
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Drag fighters from the left character list into this encounter board. Changes here do not
-                  modify main sheets.
-                </p>
-                <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50/70 px-3 py-2 text-xs text-indigo-900 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-100">
-                  <span className="font-semibold">Drag & drop:</span> drag from the left list, drop here to
-                  add, then drag encounter cards to reorder turn order.
-                  {showFirstDragHint ? (
+              <section className={cn(workspaceShellRound, 'p-5 shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/40', cardClass)}>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <h2 className="text-lg font-semibold">Encounter board</h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Live turn tracker for this campaign. Changes here never modify the underlying sheets.
+                    </p>
+                  </div>
+                  <div
+                    className="rounded-full border border-slate-300 px-3 py-1 text-[11px] font-semibold text-slate-700 dark:border-slate-600 dark:text-slate-200"
+                    title="Current encounter round number"
+                  >
+                    Round {encounterRound}
+                  </div>
+                </div>
+                {showFirstDragHint ? (
+                  <div className="mt-3 flex items-start justify-between gap-2 rounded-xl border border-indigo-200 bg-indigo-50/70 px-3 py-2 text-xs text-indigo-900 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-100">
+                    <div>
+                      <span className="font-semibold">Tip:</span> drag a character from the sidebar onto the
+                      board to add them, then drag a card to reorder turn order.
+                    </div>
                     <button
                       type="button"
                       onClick={() => {
@@ -2240,14 +5124,14 @@ export default function App(): JSX.Element {
                           // ignore storage errors
                         }
                       }}
-                      className="ml-2 rounded border border-indigo-300 px-2 py-0.5 text-[11px] font-semibold text-indigo-800 dark:border-indigo-400/40 dark:text-indigo-100"
+                      className="shrink-0 rounded border border-indigo-300 px-2 py-0.5 text-[11px] font-semibold text-indigo-800 dark:border-indigo-400/40 dark:text-indigo-100"
                     >
                       Got it
                     </button>
-                  ) : null}
-                </div>
+                  </div>
+                ) : null}
                 <div
-                  className="mt-3 rounded-lg border border-slate-200 p-3 dark:border-slate-700"
+                  className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 p-3 dark:border-slate-700"
                   onDragOver={(event) => event.preventDefault()}
                   onDrop={(event) => {
                     event.preventDefault()
@@ -2255,31 +5139,48 @@ export default function App(): JSX.Element {
                     setDragCharacterId(null)
                   }}
                 >
-                  <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                    Encounter controls
-                  </div>
                   <button
                     type="button"
-                    onClick={loadEncounterFromSheets}
-                    className="mt-3 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold dark:border-slate-700"
+                    onClick={nextTurn}
+                    disabled={battleParticipants.length === 0}
+                    title="Advance the active turn marker"
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40',
+                      scheme.primary
+                    )}
                   >
-                    Reset encounter from sheets
+                    <span aria-hidden>▶</span>
+                    Next turn
                   </button>
                   <button
                     type="button"
                     onClick={sortParticipantsByInitiative}
-                    className="mt-3 ml-2 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold dark:border-slate-700"
+                    disabled={battleParticipants.length === 0}
+                    title="Reorder fighters from highest to lowest initiative"
+                    className="ecs-interactive rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:hover:bg-slate-800/50"
                   >
                     Sort by initiative
                   </button>
                   <button
                     type="button"
-                    onClick={nextTurn}
-                    className={cn('mt-3 ml-2 rounded-lg px-3 py-1.5 text-xs font-semibold text-white', scheme.primary)}
+                    onClick={loadEncounterFromSheets}
+                    title="Reload HP / AC values from each character's saved sheet"
+                    className="ecs-interactive rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
                   >
-                    Next turn
+                    Reset from sheets
                   </button>
-                  <span className="ml-2 text-xs text-slate-500 dark:text-slate-400">Round {encounterRound}</span>
+                  <button
+                    type="button"
+                    onClick={addVisibleRosterToEncounter}
+                    disabled={filteredCharacters.length === 0}
+                    title="Append every character visible in the sidebar (search + faction filter) who is not already on the board"
+                    className="ecs-interactive rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-700 dark:hover:bg-slate-800/50"
+                  >
+                    Add filtered roster
+                  </button>
+                  <span className="ml-auto text-[11px] text-slate-500 dark:text-slate-400">
+                    {battleParticipants.length} on board
+                  </span>
                 </div>
                 <div className="mt-3 space-y-3">
                   {battleParticipants.length === 0 ? (
@@ -2341,82 +5242,106 @@ export default function App(): JSX.Element {
                               Remove
                             </button>
                           </div>
-                          <div className={cn('grid gap-2', compactBattle ? 'md:grid-cols-6' : 'md:grid-cols-4')}>
-                            <label className="text-xs">
-                              HP
+                          <div className="grid gap-3 md:grid-cols-2">
+                            {/* HP block — primary, with damage/heal stepper */}
+                            <div className="rounded-lg border border-slate-200 p-2 dark:border-slate-700">
+                              <div className="flex items-center justify-between">
+                                <span className="text-[10px] font-bold uppercase tracking-wide text-rose-600 dark:text-rose-400">
+                                  HP
+                                </span>
+                                <span className="text-[10px] text-slate-400">
+                                  Sheet: {character.hpCurrent}/{character.hpMax}
+                                </span>
+                              </div>
                               <div className="mt-1 flex items-center gap-1">
                                 <button
                                   type="button"
-                                  className="rounded border border-slate-300 px-2 py-1 dark:border-slate-700"
-                                  onClick={() => updateBattleDraft(character.id, { hpCurrent: draft.hpCurrent - 1 })}
+                                  className="rounded border border-slate-300 px-1.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 dark:border-slate-700 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                                  onClick={() => updateBattleDraft(character.id, { hpCurrent: draft.hpCurrent - 5 })}
+                                  title="Take 5 damage"
                                 >
-                                  -1
+                                  −5
                                 </button>
                                 <button
                                   type="button"
-                                  className="rounded border border-slate-300 px-2 py-1 dark:border-slate-700"
-                                  onClick={() => updateBattleDraft(character.id, { hpCurrent: draft.hpCurrent - 5 })}
+                                  className="rounded border border-slate-300 px-1.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 dark:border-slate-700 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                                  onClick={() => updateBattleDraft(character.id, { hpCurrent: draft.hpCurrent - 1 })}
+                                  title="Take 1 damage"
                                 >
-                                  -5
+                                  −1
                                 </button>
                                 <input
                                   type="number"
+                                  aria-label={`${character.name} hit points`}
                                   value={draft.hpCurrent}
                                   onChange={(event) =>
                                     updateBattleDraft(character.id, {
                                       hpCurrent: Number(event.target.value || 0)
                                     })
                                   }
-                                  className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 dark:border-slate-700"
+                                  className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-center text-sm font-semibold dark:border-slate-700"
                                 />
                                 <button
                                   type="button"
-                                  className="rounded border border-slate-300 px-2 py-1 dark:border-slate-700"
+                                  className="rounded border border-slate-300 px-1.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-slate-700 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
                                   onClick={() => updateBattleDraft(character.id, { hpCurrent: draft.hpCurrent + 1 })}
+                                  title="Heal 1 HP"
                                 >
                                   +1
                                 </button>
                                 <button
                                   type="button"
-                                  className="rounded border border-slate-300 px-2 py-1 dark:border-slate-700"
+                                  className="rounded border border-slate-300 px-1.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-slate-700 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
                                   onClick={() => updateBattleDraft(character.id, { hpCurrent: draft.hpCurrent + 5 })}
+                                  title="Heal 5 HP"
                                 >
                                   +5
                                 </button>
                               </div>
-                            </label>
-                            <label className="text-xs">
-                              Armor
-                              <input
-                                type="number"
-                                value={draft.armorCurrent}
-                                onChange={(event) =>
-                                  updateBattleDraft(character.id, {
-                                    armorCurrent: Number(event.target.value || 0)
-                                  })
-                                }
-                                className="mt-1 w-full rounded border border-slate-300 bg-transparent px-2 py-1 dark:border-slate-700"
-                              />
-                            </label>
-                            <label className="text-xs">
-                              Initiative
-                              <input
-                                type="number"
-                                value={draft.initiative}
-                                onChange={(event) =>
-                                  updateBattleDraft(character.id, {
-                                    initiative: Number(event.target.value || 0)
-                                  })
-                                }
-                                className="mt-1 w-full rounded border border-slate-300 bg-transparent px-2 py-1 dark:border-slate-700"
-                              />
-                            </label>
-                            <label className="text-xs">
-                              Faction
-                              <div className="mt-1 rounded border border-slate-200 px-2 py-1 dark:border-slate-700">
-                                {character.factionGroup || 'None'}
+                            </div>
+                            {/* Defense / Initiative / Faction block */}
+                            <div className="rounded-lg border border-slate-200 p-2 dark:border-slate-700">
+                              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                Combat stats
+                              </span>
+                              <div className="mt-1 grid grid-cols-3 gap-2">
+                                <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                  AC
+                                  <input
+                                    type="number"
+                                    value={draft.armorCurrent}
+                                    onChange={(event) =>
+                                      updateBattleDraft(character.id, {
+                                        armorCurrent: Number(event.target.value || 0)
+                                      })
+                                    }
+                                    className="mt-0.5 w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-center text-sm font-semibold text-slate-900 dark:border-slate-700 dark:text-slate-100"
+                                  />
+                                </label>
+                                <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                  Init
+                                  <input
+                                    type="number"
+                                    value={draft.initiative}
+                                    onChange={(event) =>
+                                      updateBattleDraft(character.id, {
+                                        initiative: Number(event.target.value || 0)
+                                      })
+                                    }
+                                    className="mt-0.5 w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-center text-sm font-semibold text-slate-900 dark:border-slate-700 dark:text-slate-100"
+                                  />
+                                </label>
+                                <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                  Faction
+                                  <div
+                                    className="mt-0.5 truncate rounded border border-slate-200 px-2 py-1 text-center text-xs font-medium normal-case text-slate-700 dark:border-slate-700 dark:text-slate-200"
+                                    title={character.factionGroup || 'None'}
+                                  >
+                                    {character.factionGroup || '—'}
+                                  </div>
+                                </div>
                               </div>
-                            </label>
+                            </div>
                           </div>
                           {rulesMode === 'dnd' ? (
                             <div className="mt-2 grid gap-2 md:grid-cols-2">
@@ -2508,6 +5433,10 @@ export default function App(): JSX.Element {
                   keywordText={keywordText}
                   setKeywordText={setKeywordText}
                   onGenerateAttacks={() => void generateAttacks()}
+                  onRemoveAttack={removeAttack}
+                  manualAttackDraft={manualAttackDraft}
+                  setManualAttackDraft={setManualAttackDraft}
+                  onAddManualAttack={addManualAttack}
                   onPickPortrait={() => void pickCharacterPortrait()}
                   onClearPortrait={() => void clearCharacterPortrait()}
                   dndClass={dndClass}
@@ -2517,6 +5446,7 @@ export default function App(): JSX.Element {
                   dndCastingAbility={dndCastingAbility}
                   showAdvancedCharacterFields={showAdvancedCharacterFields}
                   setShowAdvancedCharacterFields={setShowAdvancedCharacterFields}
+                  keywordIntelLines={sheetAttackIntel?.lines ?? []}
                 />
               ) : (
             <section className={cn('rounded-2xl p-4 shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/40', cardClass)}>
@@ -2646,6 +5576,9 @@ export default function App(): JSX.Element {
             {workspaceTab === 'sheet' && rulesMode === 'ttrpg' ? (
             <section className={cn('rounded-2xl p-4 shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/40', cardClass)}>
               <h2 className="text-lg font-semibold">Attacks</h2>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Generate builds a batch from keywords. Turn on &quot;Append generated attacks&quot; in the Theme menu to keep prior batches instead of replacing them.
+              </p>
               <input
                 value={keywordText}
                 onChange={(event) => setKeywordText(event.target.value)}
@@ -2659,12 +5592,91 @@ export default function App(): JSX.Element {
               >
                 Generate from keywords
               </button>
+              <div className="mt-3 space-y-2 rounded-lg border border-dashed border-slate-300 p-2 dark:border-slate-600">
+                <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Add attack manually
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  <input
+                    value={manualAttackDraft.name}
+                    onChange={(event) => setManualAttackDraft((d) => ({ ...d, name: event.target.value }))}
+                    placeholder="Attack name"
+                    className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
+                  />
+                  <input
+                    value={manualAttackDraft.hitBonus}
+                    onChange={(event) => setManualAttackDraft((d) => ({ ...d, hitBonus: event.target.value }))}
+                    placeholder="Hit bonus"
+                    className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
+                  />
+                  <input
+                    value={manualAttackDraft.damageDice}
+                    onChange={(event) => setManualAttackDraft((d) => ({ ...d, damageDice: event.target.value }))}
+                    placeholder="e.g. 2d6+4"
+                    className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
+                  />
+                  <input
+                    value={manualAttackDraft.damageType}
+                    onChange={(event) => setManualAttackDraft((d) => ({ ...d, damageType: event.target.value }))}
+                    placeholder="Damage type"
+                    className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
+                  />
+                  <input
+                    value={manualAttackDraft.range}
+                    onChange={(event) => setManualAttackDraft((d) => ({ ...d, range: event.target.value }))}
+                    placeholder="Range"
+                    className="sm:col-span-2 w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
+                  />
+                  <input
+                    value={manualAttackDraft.description}
+                    onChange={(event) => setManualAttackDraft((d) => ({ ...d, description: event.target.value }))}
+                    placeholder="Description (optional)"
+                    className="sm:col-span-2 w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => addManualAttack()}
+                  className="w-full rounded-lg border border-slate-400 px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-500 dark:text-slate-200 dark:hover:bg-slate-800/60"
+                >
+                  Add to list
+                </button>
+              </div>
               <ul className="mt-2 space-y-2">
                 {editor.attacks.map((attack) => (
                   <li key={attack.id} className="rounded-lg border border-slate-200 p-2 dark:border-slate-700">
-                    <div className="text-sm font-semibold">{attack.name}</div>
-                    <div className="text-xs text-slate-500 dark:text-slate-400">
-                      {attack.damageDice} {attack.damageType} | +{attack.hitBonus} | {attack.range}
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1 text-sm font-semibold">
+                          <span>{attack.name}</span>
+                          {attack.source === 'generated' ? (
+                            <span className="rounded bg-amber-200/70 px-1 py-0 text-[9px] font-bold uppercase tracking-wide text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
+                              Gen
+                            </span>
+                          ) : attack.source === 'manual' ? (
+                            <span className="rounded bg-sky-200/70 px-1 py-0 text-[9px] font-bold uppercase tracking-wide text-sky-900 dark:bg-sky-500/20 dark:text-sky-100">
+                              Manual
+                            </span>
+                          ) : null}
+                        </div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400">
+                          {attack.damageDice} {attack.damageType} | +{attack.hitBonus} | {attack.range}
+                        </div>
+                        {attack.description ? (
+                          <div className="mt-0.5 text-[11px] text-slate-500 dark:text-slate-400">
+                            {attack.description}
+                          </div>
+                        ) : null}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => removeAttack(attack.id)}
+                        title="Remove this attack from the sheet"
+                        aria-label={`Remove ${attack.name}`}
+                        className="shrink-0 rounded border border-rose-300 px-2 py-0.5 text-[10px] font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                      >
+                        Remove
+                      </button>
                     </div>
                   </li>
                 ))}
@@ -2674,31 +5686,34 @@ export default function App(): JSX.Element {
 
             {workspaceTab === 'sheet' ? (
             <section className={cn('rounded-2xl p-4 shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/40', cardClass)}>
-              <h2 className="text-lg font-semibold">Sheet Preview</h2>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-semibold">Sheet preview</h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Read-only bracket export — copy and paste into your VTT or notes.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(preview)
+                    setAppMessage('Copied sheet to clipboard.')
+                  }}
+                  className="ecs-interactive rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
+                >
+                  Copy
+                </button>
+              </div>
               <textarea
                 readOnly
                 value={preview}
                 rows={10}
                 className="mt-2 w-full rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-xs dark:border-slate-700 dark:bg-slate-950/60"
               />
-              <div className="mt-3 flex gap-2">
-                <button
-                  type="button"
-                  onClick={() => void saveCharacter()}
-                  className={cn('rounded-lg px-4 py-2 text-sm font-semibold text-white', scheme.primary)}
-                >
-                  Save
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void deleteCharacter()}
-                  className="rounded-lg border border-rose-300 px-4 py-2 text-sm font-semibold text-rose-700 dark:border-rose-500/40 dark:text-rose-300"
-                >
-                  Delete
-                </button>
-              </div>
             </section>
             ) : null}
+            </>
+            )}
           </main>
         </div>
 
@@ -2715,83 +5730,369 @@ export default function App(): JSX.Element {
         ) : null}
 
         {showQuickCreate ? (
-          <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 p-4">
-            <div className={cn('w-full max-w-md rounded-2xl border p-4 shadow-xl', cardClass)}>
-              <h3 className="text-lg font-semibold">Quick Create Character</h3>
-              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                Add a session-ready character in a few fields.
-              </p>
-              <div className="mt-3 space-y-2">
-                <input
-                  value={quickName}
-                  onChange={(event) => setQuickName(event.target.value)}
-                  placeholder="Character name"
-                  className="w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    type="number"
-                    min={1}
-                    value={quickHp}
-                    onChange={(event) => setQuickHp(Number(event.target.value || 1))}
-                    placeholder="Starting HP"
-                    className="rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
-                  />
-                  {rulesMode === 'dnd' ? (
-                    <select
-                      value={quickClass}
-                      onChange={(event) => setQuickClass(event.target.value as (typeof DND_CLASSES)[number])}
-                      className="rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
+          <div
+            className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/55 p-4 motion-safe:animate-ecs-backdrop-in"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="quick-create-title"
+          >
+            <div className={cn('relative flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border shadow-2xl motion-safe:animate-ecs-pop-in', cardClass)}>
+              {/* Header with stepper */}
+              <header className="border-b border-slate-200/60 px-5 py-4 dark:border-slate-700/60">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                      Step {quickStep} of 4
+                    </div>
+                    <h3 id="quick-create-title" className="mt-0.5 text-lg font-semibold">
+                      {quickStep === 1 ? 'Pick a class' : null}
+                      {quickStep === 2 ? 'Name your character' : null}
+                      {quickStep === 3 ? 'Set the stats' : null}
+                      {quickStep === 4 ? 'Review & create' : null}
+                    </h3>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowQuickCreate(false)
+                      resetQuickWizard()
+                    }}
+                    aria-label="Close character creator"
+                    className="ecs-interactive rounded-md border border-slate-300 px-2 py-0.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800/60"
+                  >
+                    Cancel
+                  </button>
+                </div>
+                <ol className="mt-3 flex items-center gap-1.5" aria-label="Wizard progress">
+                  {[1, 2, 3, 4].map((step) => (
+                    <li key={step} className="flex flex-1 items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setQuickStep(step as 1 | 2 | 3 | 4)}
+                        disabled={step > quickStep && !quickName.trim()}
+                        aria-current={quickStep === step ? 'step' : undefined}
+                        className={cn(
+                          'h-1.5 w-full rounded-full transition-colors duration-150',
+                          quickStep === step
+                            ? scheme.primary
+                            : step < quickStep
+                              ? 'bg-slate-400 dark:bg-slate-500'
+                              : 'bg-slate-200 dark:bg-slate-700',
+                          step > quickStep && !quickName.trim() ? 'cursor-not-allowed' : 'cursor-pointer'
+                        )}
+                      />
+                    </li>
+                  ))}
+                </ol>
+              </header>
+
+              {/* Body */}
+              <div className="flex-1 overflow-y-auto px-5 py-4">
+                {/* Step 1: Class / Role */}
+                {quickStep === 1 ? (
+                  <div>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                      {rulesMode === 'dnd'
+                        ? 'Class is the biggest decision — it shapes how you fight, cast, and roleplay. You can rename and tune everything later.'
+                        : 'Pick a starting role. Each one comes with sensible defaults; you can rebalance on the next step.'}
+                    </p>
+                    <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3">
+                      {rulesMode === 'dnd'
+                        ? DND_CLASSES.map((klass) => {
+                            const baseline = DND_CLASS_BASELINE[klass] ?? { hp: 10, ac: 14 }
+                            const isSelected = quickClass === klass
+                            return (
+                              <button
+                                key={klass}
+                                type="button"
+                                onClick={() => setQuickClass(klass)}
+                                aria-pressed={isSelected}
+                                className={cn(
+                                  'rounded-xl border p-3 text-left transition-shadow duration-150 hover:shadow-md focus-visible:outline-none focus-visible:ring-2',
+                                  scheme.ring,
+                                  isSelected
+                                    ? characterRowSelected
+                                    : 'border-slate-200 bg-white/60 dark:border-slate-700 dark:bg-slate-900/40'
+                                )}
+                              >
+                                <div className="text-sm font-bold">{klass}</div>
+                                <div className="mt-0.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                                  {DND_CLASS_BLURB[klass]}
+                                </div>
+                                <div className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                                  HP {baseline.hp} · AC {baseline.ac}
+                                </div>
+                              </button>
+                            )
+                          })
+                        : (Object.keys(TTRPG_PRESETS) as QuickPreset[]).map((key) => {
+                            const preset = TTRPG_PRESETS[key]
+                            const isSelected = quickPreset === key
+                            return (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => setQuickPreset(key)}
+                                aria-pressed={isSelected}
+                                className={cn(
+                                  'rounded-xl border p-3 text-left transition-shadow duration-150 hover:shadow-md focus-visible:outline-none focus-visible:ring-2',
+                                  scheme.ring,
+                                  isSelected
+                                    ? characterRowSelected
+                                    : 'border-slate-200 bg-white/60 dark:border-slate-700 dark:bg-slate-900/40'
+                                )}
+                              >
+                                <div className="text-sm font-bold">{preset.label}</div>
+                                <div className="mt-0.5 text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                                  {preset.blurb}
+                                </div>
+                                <div className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                                  HP {preset.hp} · AC {preset.ac}
+                                </div>
+                              </button>
+                            )
+                          })}
+                    </div>
+                  </div>
+                ) : null}
+
+                {/* Step 2: Name + identity */}
+                {quickStep === 2 ? (
+                  <div className="space-y-3">
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                      Just a name is required — the rest is optional flavor you can fill in later.
+                    </p>
+                    <SettingsField
+                      label="Character name"
+                      htmlFor="quick-name"
+                      hint="What everyone at the table will call them. Required."
                     >
-                      {DND_CLASSES.map((klass) => (
-                        <option key={klass} value={klass}>
-                          {klass}
-                        </option>
+                      <input
+                        id="quick-name"
+                        autoFocus
+                        value={quickName}
+                        onChange={(event) => setQuickName(event.target.value)}
+                        placeholder="e.g. Mira Halewind"
+                        className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
+                      />
+                    </SettingsField>
+                    {rulesMode === 'dnd' ? (
+                      <SettingsField
+                        label="Subclass / Oath / Circle"
+                        htmlFor="quick-subclass"
+                        hint="Optional flavor for the chosen class — e.g. Path of the Berserker, Oath of Devotion."
+                      >
+                        <input
+                          id="quick-subclass"
+                          value={quickSubclass}
+                          onChange={(event) => setQuickSubclass(event.target.value)}
+                          placeholder="Optional"
+                          className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
+                        />
+                      </SettingsField>
+                    ) : null}
+                    <SettingsField
+                      label="Faction or party group"
+                      htmlFor="quick-faction"
+                      hint="Helps you group, filter, and color-code characters across campaigns. Optional."
+                    >
+                      <input
+                        id="quick-faction"
+                        value={quickFaction}
+                        onChange={(event) => setQuickFaction(event.target.value)}
+                        placeholder={rulesMode === 'dnd' ? 'e.g. The Lantern Watch' : `e.g. ${TTRPG_PRESETS[quickPreset].factionGroup}`}
+                        className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
+                      />
+                    </SettingsField>
+                    <SettingsField
+                      label="One-line concept"
+                      htmlFor="quick-desc"
+                      hint="A sentence that captures the vibe — saved into the sheet's notes field. Optional."
+                    >
+                      <input
+                        id="quick-desc"
+                        value={quickDescription}
+                        onChange={(event) => setQuickDescription(event.target.value)}
+                        placeholder="e.g. Disgraced knight seeking redemption"
+                        className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
+                      />
+                    </SettingsField>
+                  </div>
+                ) : null}
+
+                {/* Step 3: Stats */}
+                {quickStep === 3 ? (
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <p className="text-sm text-slate-600 dark:text-slate-400">
+                        Defaults come from your {rulesMode === 'dnd' ? 'class' : 'role'} pick. Override anything below.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={applyQuickBaselineStats}
+                        className="ecs-interactive rounded-md border border-slate-300 px-2 py-1 text-[11px] font-semibold hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-800/60"
+                      >
+                        Reset to defaults
+                      </button>
+                    </div>
+                    <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                      <SettingsField
+                        label="Hit points"
+                        htmlFor="quick-hp"
+                        hint={`Suggested ${quickBaselineForCurrentMode().hp} for ${rulesMode === 'dnd' ? quickClass : TTRPG_PRESETS[quickPreset].label}.`}
+                      >
+                        <input
+                          id="quick-hp"
+                          type="number"
+                          min={1}
+                          value={quickHp}
+                          onChange={(event) => setQuickHp(Math.max(1, Number(event.target.value) || 1))}
+                          className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
+                        />
+                      </SettingsField>
+                      <SettingsField
+                        label="Armor class"
+                        htmlFor="quick-ac"
+                        hint={`Suggested ${quickBaselineForCurrentMode().ac}. Higher is harder to hit.`}
+                      >
+                        <input
+                          id="quick-ac"
+                          type="number"
+                          min={0}
+                          value={quickArmor}
+                          onChange={(event) => setQuickArmor(Math.max(0, Number(event.target.value) || 0))}
+                          className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
+                        />
+                      </SettingsField>
+                      <SettingsField
+                        label="Level"
+                        htmlFor="quick-level"
+                        hint={rulesMode === 'dnd' ? 'Sets DnD proficiency tier.' : 'Power rating for your TTRPG system.'}
+                      >
+                        <input
+                          id="quick-level"
+                          type="number"
+                          min={1}
+                          max={30}
+                          value={quickLevel}
+                          onChange={(event) => setQuickLevel(Math.max(1, Math.min(30, Number(event.target.value) || 1)))}
+                          className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
+                        />
+                      </SettingsField>
+                    </div>
+                    {rulesMode === 'dnd' ? (
+                      <p className="rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-[11px] text-slate-600 dark:border-slate-700 dark:bg-slate-900/40 dark:text-slate-300">
+                        At level {quickLevel}, your proficiency bonus will be <span className="font-semibold">+{proficiencyBonus(quickLevel)}</span>.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+
+                {/* Step 4: Review */}
+                {quickStep === 4 ? (
+                  <div className="space-y-3">
+                    <p className="text-sm text-slate-600 dark:text-slate-400">
+                      Last look. Click any line to jump back and edit.
+                    </p>
+                    <dl className="divide-y divide-slate-200 rounded-lg border border-slate-200 dark:divide-slate-700 dark:border-slate-700">
+                      {[
+                        {
+                          step: 1 as const,
+                          label: rulesMode === 'dnd' ? 'Class' : 'Role',
+                          value: rulesMode === 'dnd' ? quickClass : TTRPG_PRESETS[quickPreset].label
+                        },
+                        { step: 2 as const, label: 'Name', value: quickName.trim() || '— (required)' },
+                        ...(rulesMode === 'dnd' && quickSubclass.trim()
+                          ? [{ step: 2 as const, label: 'Subclass', value: quickSubclass.trim() }]
+                          : []),
+                        { step: 2 as const, label: 'Faction', value: quickFaction.trim() || (rulesMode === 'dnd' ? '—' : TTRPG_PRESETS[quickPreset].factionGroup) },
+                        ...(quickDescription.trim()
+                          ? [{ step: 2 as const, label: 'Concept', value: quickDescription.trim() }]
+                          : []),
+                        { step: 3 as const, label: 'HP / AC', value: `${quickHp} HP · AC ${quickArmor}` },
+                        { step: 3 as const, label: 'Level', value: String(quickLevel) }
+                      ].map((row, idx) => (
+                        <button
+                          key={`${row.label}-${idx}`}
+                          type="button"
+                          onClick={() => setQuickStep(row.step)}
+                          className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm hover:bg-slate-50 dark:hover:bg-slate-800/40"
+                        >
+                          <span className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                            {row.label}
+                          </span>
+                          <span className="truncate text-right font-medium">{row.value}</span>
+                        </button>
                       ))}
-                    </select>
-                  ) : (
-                    <select
-                      value={quickPreset}
-                      onChange={(event) => setQuickPreset(event.target.value as QuickPreset)}
-                      className="rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
+                    </dl>
+                    {!quickName.trim() ? (
+                      <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/40 dark:bg-amber-900/20 dark:text-amber-200">
+                        A name is required before creating. Jump back to step 2.
+                      </p>
+                    ) : null}
+                  </div>
+                ) : null}
+              </div>
+
+              {/* Footer */}
+              <footer className="flex items-center justify-between gap-2 border-t border-slate-200/60 px-5 py-3 dark:border-slate-700/60">
+                <button
+                  type="button"
+                  onClick={() => setQuickStep((step) => (step > 1 ? ((step - 1) as 1 | 2 | 3 | 4) : step))}
+                  disabled={quickStep === 1}
+                  className="ecs-interactive rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800/60"
+                >
+                  ← Back
+                </button>
+                <div className="flex items-center gap-2">
+                  {quickStep === 1 ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const baseline = quickBaselineForCurrentMode()
+                        if (!quickName.trim()) {
+                          const fallback = rulesMode === 'dnd' ? `New ${quickClass}` : `New ${TTRPG_PRESETS[quickPreset].label}`
+                          setQuickName(fallback)
+                        }
+                        setQuickHp(baseline.hp)
+                        setQuickArmor(baseline.ac)
+                        setQuickStep(4)
+                      }}
+                      className="ecs-interactive rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-800/60"
+                      title="Use class defaults and skip straight to review"
                     >
-                      <option value="frontliner">Frontliner preset</option>
-                      <option value="caster">Caster preset</option>
-                      <option value="rogue">Rogue preset</option>
-                    </select>
+                      Quick build
+                    </button>
+                  ) : null}
+                  {quickStep < 4 ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (quickStep === 1) applyQuickBaselineStats()
+                        setQuickStep((step) => (step < 4 ? ((step + 1) as 1 | 2 | 3 | 4) : step))
+                      }}
+                      className={cn(
+                        'rounded-md px-3 py-1.5 text-xs font-semibold text-white',
+                        scheme.primary
+                      )}
+                    >
+                      Next →
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void createQuickCharacter()}
+                      disabled={!quickName.trim()}
+                      className={cn(
+                        'rounded-md px-3 py-1.5 text-xs font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40',
+                        scheme.primary
+                      )}
+                    >
+                      Create character
+                    </button>
                   )}
                 </div>
-                {rulesMode === 'dnd' ? (
-                  <input
-                    value={quickSubclass}
-                    onChange={(event) => setQuickSubclass(event.target.value)}
-                    placeholder="Subclass / Oath / Circle (optional)"
-                    className="w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
-                  />
-                ) : null}
-                <input
-                  value={quickFaction}
-                  onChange={(event) => setQuickFaction(event.target.value)}
-                  placeholder="Faction group (optional)"
-                  className="w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
-                />
-              </div>
-              <div className="mt-3 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setShowQuickCreate(false)}
-                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold dark:border-slate-700"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void createQuickCharacter()}
-                  className={cn('rounded-lg px-3 py-1.5 text-xs font-semibold text-white', scheme.primary)}
-                >
-                  Create
-                </button>
-              </div>
+              </footer>
             </div>
           </div>
         ) : null}
@@ -2801,7 +6102,418 @@ export default function App(): JSX.Element {
             {appMessage}
           </div>
         ) : null}
+        </div>
+        </DevToolsPanel>
       </div>
+
+      {showThemeMenu && themeMenuPos
+        ? createPortal(
+            <>
+              <button
+                type="button"
+                aria-label="Close theme menu"
+                className="fixed inset-0 z-[50200] cursor-default bg-slate-950/30 motion-safe:animate-ecs-backdrop-in"
+                onClick={() => setShowThemeMenu(false)}
+              />
+              <div
+                role="dialog"
+                aria-label="Theme and appearance"
+                className={cn(
+                  'fixed z-[50201] flex max-h-[min(92vh,calc(100dvh-12px))] w-[22rem] origin-top-right flex-col overflow-hidden rounded-xl border shadow-xl motion-safe:animate-ecs-pop-in',
+                  cardClass
+                )}
+                style={{ top: themeMenuPos.top, left: themeMenuPos.left }}
+              >
+                <header className="flex items-center justify-between border-b border-slate-200/60 px-4 py-3 dark:border-slate-700/60">
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                      Theme
+                    </div>
+                    <div className="text-sm font-semibold">Palette &amp; shell</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowThemeMenu(false)}
+                    aria-label="Close theme menu"
+                    className="ecs-interactive rounded-md border border-slate-300 px-2 py-0.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800/60"
+                  >
+                    Close
+                  </button>
+                </header>
+
+                <div className="flex-1 overflow-y-auto px-4 py-3">
+                  <SettingsSection title="Color scheme">
+                    <div className="grid grid-cols-2 gap-2">
+                      {themeSchemeMenuChoices.map((row) => (
+                        <button
+                          key={row.id}
+                          type="button"
+                          onClick={() => setColorScheme(row.id)}
+                          className={cn(
+                            'rounded-lg border px-2 py-2 text-left text-xs transition-colors',
+                            colorScheme === row.id
+                              ? 'border-sky-500 bg-sky-500/15 ring-2 ring-sky-400/80 dark:border-sky-400 dark:bg-sky-500/10 dark:ring-sky-500/50'
+                              : 'border-slate-300/80 hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-800/60'
+                          )}
+                        >
+                          <div className="font-semibold">{row.title}</div>
+                          <div className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">{row.blurb}</div>
+                        </button>
+                      ))}
+                    </div>
+                  </SettingsSection>
+
+                  <SettingsSection title="Layout & brightness">
+                    <SettingsField
+                      label="Page layout"
+                      htmlFor="theme-layout"
+                      hint="Themed reshapes the workspace to match each console or OS look. Default keeps the standard sidebar-left layout with palette colors only."
+                    >
+                      <select
+                        id="theme-layout"
+                        value={useThemeLayout ? 'themed' : 'default'}
+                        onChange={(event) => setUseThemeLayout(event.target.value === 'themed')}
+                        className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                      >
+                        <option value="themed">Themed layout (per scheme)</option>
+                        <option value="default">Default layout (sidebar left)</option>
+                      </select>
+                    </SettingsField>
+                    <SettingsField
+                      label="Light / dark"
+                      htmlFor="theme-tone"
+                      hint="System follows your OS. Light and Dark force the UI tone for the whole workspace."
+                    >
+                      <select
+                        id="theme-tone"
+                        value={themeMode}
+                        onChange={(event) => setThemeMode(event.target.value as ThemeMode)}
+                        className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                      >
+                        <option value="system">System</option>
+                        <option value="light">Light</option>
+                        <option value="dark">Dark</option>
+                      </select>
+                    </SettingsField>
+                  </SettingsSection>
+
+                  <SettingsSection title="Shape & chrome">
+                    <SettingsField
+                      label="Corner vocabulary"
+                      htmlFor="theme-corners"
+                      hint="Soft / Organic favor rounded glass; Era restores angled clip-path cards on glossy palettes; Sharp is tight radii everywhere. Win9x teal keeps its polygons in Soft, Organic, and Sharp."
+                    >
+                      <select
+                        id="theme-corners"
+                        value={cornerStyle}
+                        onChange={(event) => {
+                          setCornerStyle(event.target.value as CornerStyle)
+                          setActiveUiPresetId(null)
+                        }}
+                        className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                      >
+                        <option value="soft">Soft — friendly rounded cards</option>
+                        <option value="organic">Organic — larger bubbly radii</option>
+                        <option value="era">Era — angled banners & clipped tiles</option>
+                        <option value="sharp">Sharp — compact tech corners</option>
+                      </select>
+                    </SettingsField>
+                    <SettingsField
+                      label="Surface chrome"
+                      htmlFor="theme-chrome"
+                      hint="Light / heavy adjusts the drop-shadow wash on the main workspace grid (desktop)."
+                    >
+                      <select
+                        id="theme-chrome"
+                        value={chromeWeight}
+                        onChange={(event) => {
+                          setChromeWeight(event.target.value as ChromeWeight)
+                          setActiveUiPresetId(null)
+                        }}
+                        className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                      >
+                        <option value="light">Light — airy, low lift</option>
+                        <option value="standard">Standard — balanced</option>
+                        <option value="heavy">Heavy — deeper stack</option>
+                      </select>
+                    </SettingsField>
+                    <SettingsField
+                      label="Workspace density"
+                      htmlFor="theme-density"
+                      hint="Controls vertical rhythm between the header, status strip, and grid."
+                    >
+                      <select
+                        id="theme-density"
+                        value={workspaceDensity}
+                        onChange={(event) => {
+                          setWorkspaceDensity(event.target.value as WorkspaceDensity)
+                          setActiveUiPresetId(null)
+                        }}
+                        className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                      >
+                        <option value="cozy">Cozy — tight spacing</option>
+                        <option value="comfortable">Comfortable — default</option>
+                        <option value="spacious">Spacious — more air</option>
+                      </select>
+                    </SettingsField>
+                  </SettingsSection>
+
+                  <SettingsSection title="Columns & regions">
+                    <SettingsField
+                      label="Campaign column"
+                      htmlFor="theme-sidebar-side"
+                      hint="Auto follows each palette’s authored grid (e.g. Win98 explorer on the right). Left / Right forces the campaign sidebar on large screens and overrides those templates."
+                    >
+                      <select
+                        id="theme-sidebar-side"
+                        value={sidebarPlacement}
+                        onChange={(event) => {
+                          setSidebarPlacement(event.target.value as SidebarPlacement)
+                          setActiveUiPresetId(null)
+                        }}
+                        className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                      >
+                        <option value="auto">Auto — palette default</option>
+                        <option value="left">Force left column</option>
+                        <option value="right">Force right column</option>
+                      </select>
+                    </SettingsField>
+                    <SettingsField
+                      label="Sidebar width (forced)"
+                      htmlFor="theme-sidebar-w"
+                      hint="Only applies when Campaign column is not Auto (lg breakpoint and up)."
+                    >
+                      <select
+                        id="theme-sidebar-w"
+                        value={sidebarWidth}
+                        onChange={(event) => {
+                          setSidebarWidth(event.target.value as SidebarWidthPreset)
+                          setActiveUiPresetId(null)
+                        }}
+                        className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                      >
+                        <option value="compact">Compact — 240px</option>
+                        <option value="medium">Medium — 300px</option>
+                        <option value="wide">Wide — 380px</option>
+                      </select>
+                    </SettingsField>
+                    <SettingsField
+                      label="Layout edit mode"
+                      htmlFor="theme-layout-edit"
+                      hint="When on, reorder only from the bottom panel: drag rows, use ↑ ↓, or focus a row and use arrows, Home, or End. Battle drag-and-drop pauses while this is on."
+                    >
+                      <select
+                        id="theme-layout-edit"
+                        value={layoutEditMode ? 'on' : 'off'}
+                        onChange={(event) => setLayoutEditMode(event.target.value === 'on')}
+                        className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                      >
+                        <option value="off">Off</option>
+                        <option value="on">On — reorder regions</option>
+                      </select>
+                    </SettingsField>
+                    <p className="text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                      Current order:{' '}
+                      <span className="font-mono text-slate-700 dark:text-slate-200">
+                        {workspaceFlow.join(' → ')}
+                      </span>
+                    </p>
+                  </SettingsSection>
+
+                  <SettingsSection title="UI presets">
+                    <p className="text-[11px] leading-snug text-slate-600 dark:text-slate-300">
+                      Presets capture shape, chrome, density, columns, region order, and layout mode. They optionally include the active color scheme. Stored in{' '}
+                      <span className="font-mono text-[10px]">localStorage</span> on this device (shared across accounts).
+                    </p>
+                    <SettingsField label="Preset name" htmlFor="theme-preset-name" hint="Choose a short label before saving.">
+                      <input
+                        id="theme-preset-name"
+                        value={newPresetDraftName}
+                        onChange={(event) => setNewPresetDraftName(event.target.value)}
+                        className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                        maxLength={80}
+                      />
+                    </SettingsField>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        className="ecs-interactive rounded-md border border-slate-300 px-2 py-1 text-[11px] font-semibold hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-800/60"
+                        onClick={() => {
+                          const preset = {
+                            id: newPresetId(),
+                            name: newPresetDraftName.trim() || 'Untitled layout',
+                            updatedAt: new Date().toISOString(),
+                            layout: {
+                              cornerStyle,
+                              chromeWeight,
+                              sidebarPlacement,
+                              sidebarWidth,
+                              workspaceDensity,
+                              workspaceFlow,
+                              useThemeLayout,
+                              colorScheme
+                            }
+                          }
+                          setUiPresets(upsertUiPreset(uiPresets, preset))
+                          setActiveUiPresetId(preset.id)
+                          setAppMessage(`Saved preset “${preset.name}”.`)
+                        }}
+                      >
+                        Save new preset
+                      </button>
+                      {activeUiPresetId ? (
+                        <button
+                          type="button"
+                          className="ecs-interactive rounded-md border border-slate-300 px-2 py-1 text-[11px] font-semibold hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-800/60"
+                          onClick={() => {
+                            const existing = uiPresets.find((p) => p.id === activeUiPresetId)
+                            if (!existing) return
+                            const preset = {
+                              ...existing,
+                              updatedAt: new Date().toISOString(),
+                              layout: {
+                                cornerStyle,
+                                chromeWeight,
+                                sidebarPlacement,
+                                sidebarWidth,
+                                workspaceDensity,
+                                workspaceFlow,
+                                useThemeLayout,
+                                colorScheme
+                              }
+                            }
+                            setUiPresets(upsertUiPreset(uiPresets, preset))
+                            setAppMessage(`Updated preset “${preset.name}”.`)
+                          }}
+                        >
+                          Overwrite selected
+                        </button>
+                      ) : null}
+                    </div>
+                    <SettingsField label="Apply preset" htmlFor="theme-preset-apply" hint="Loads the saved layout bundle.">
+                      <select
+                        id="theme-preset-apply"
+                        value={activeUiPresetId ?? ''}
+                        onChange={(event) => {
+                          const id = event.target.value
+                          if (!id) {
+                            setActiveUiPresetId(null)
+                            setRegionFlowCustom(false)
+                            setWorkspaceFlow(themedWorkspaceFlowDefault(colorScheme, useThemeLayout))
+                            return
+                          }
+                          const p = uiPresets.find((row) => row.id === id)
+                          if (!p) return
+                          const { layout } = p
+                          setCornerStyle(layout.cornerStyle)
+                          setChromeWeight(layout.chromeWeight)
+                          setSidebarPlacement(layout.sidebarPlacement)
+                          setSidebarWidth(layout.sidebarWidth)
+                          setWorkspaceDensity(layout.workspaceDensity)
+                          setWorkspaceFlow(normalizeWorkspaceFlow(layout.workspaceFlow))
+                          setUseThemeLayout(layout.useThemeLayout)
+                          if (layout.colorScheme) setColorScheme(parseColorScheme(layout.colorScheme))
+                          setRegionFlowCustom(true)
+                          setActiveUiPresetId(p.id)
+                          setAppMessage(`Applied preset “${p.name}”.`)
+                        }}
+                        className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                      >
+                        <option value="">— none —</option>
+                        {uiPresets.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name}
+                          </option>
+                        ))}
+                      </select>
+                    </SettingsField>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={!activeUiPresetId}
+                        className="ecs-interactive rounded-md border border-rose-300 px-2 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-500/40 dark:text-rose-200 dark:hover:bg-rose-500/10"
+                        onClick={() => {
+                          if (!activeUiPresetId) return
+                          setUiPresets(deleteUiPreset(uiPresets, activeUiPresetId))
+                          setActiveUiPresetId(null)
+                          setAppMessage('Deleted preset.')
+                        }}
+                      >
+                        Delete selected
+                      </button>
+                      <button
+                        type="button"
+                        className="ecs-interactive rounded-md border border-slate-300 px-2 py-1 text-[11px] font-semibold hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-800/60"
+                        onClick={() => setUiPresets(loadUiPresets())}
+                      >
+                        Reload list
+                      </button>
+                    </div>
+                  </SettingsSection>
+
+                  <SettingsSection title="Appearance storage">
+                    <SettingsField
+                      label="Remember appearance per account"
+                      htmlFor="theme-persist"
+                      hint="Saves Theme menu choices per account on this device. Guests still get a local theme on the sign-in screen."
+                    >
+                      <select
+                        id="theme-persist"
+                        value={persistThemePerAccount ? 'on' : 'off'}
+                        onChange={(event) => setPersistThemePerAccount(event.target.value === 'on')}
+                        className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                      >
+                        <option value="on">On — per account</option>
+                        <option value="off">Off — session only</option>
+                      </select>
+                    </SettingsField>
+                  </SettingsSection>
+
+                  <SettingsSection title="Sound">
+                    <SettingsField
+                      label="Button click sound"
+                      htmlFor="theme-ui-sounds"
+                      hint="Very short tick on primary mouse / pen presses for buttons and button-like controls (capture phase). Off by default; first click unlocks audio in the browser."
+                    >
+                      <select
+                        id="theme-ui-sounds"
+                        value={uiSoundsEnabled ? 'on' : 'off'}
+                        onChange={(event) => setUiSoundsEnabled(event.target.value === 'on')}
+                        className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                      >
+                        <option value="off">Off</option>
+                        <option value="on">On — tick on button presses</option>
+                      </select>
+                    </SettingsField>
+                  </SettingsSection>
+
+                  <SettingsSection title="Attack generator">
+                    <SettingsField
+                      label="Append generated attacks"
+                      htmlFor="theme-merge-attacks"
+                      hint="Off replaces the previous generated batch each time you generate. On keeps prior batches. Manual attacks are never removed."
+                    >
+                      <select
+                        id="theme-merge-attacks"
+                        value={mergeGeneratedAttacks ? 'on' : 'off'}
+                        onChange={(event) => setMergeGeneratedAttacks(event.target.value === 'on')}
+                        className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                      >
+                        <option value="off">Replace prior generated batch</option>
+                        <option value="on">Append new generated batch</option>
+                      </select>
+                    </SettingsField>
+                  </SettingsSection>
+                </div>
+
+                <footer className="border-t border-slate-200/60 px-4 py-2 text-[10px] text-slate-500 dark:border-slate-700/60 dark:text-slate-400">
+                  Sheet rules (TTRPG / DnD) use the toggle in the header bar.
+                </footer>
+              </div>
+            </>,
+            document.body
+          )
+        : null}
 
       {showSettingsMenu && settingsPanelPos
         ? createPortal(
@@ -2816,92 +6528,326 @@ export default function App(): JSX.Element {
                 role="dialog"
                 aria-label="Workspace settings"
                 className={cn(
-                  'fixed z-[50001] w-72 origin-top-right rounded-xl border p-3 shadow-xl motion-safe:animate-ecs-pop-in',
+                  'fixed z-[50001] flex max-h-[min(80vh,640px)] w-80 origin-top-right flex-col overflow-hidden rounded-xl border shadow-xl motion-safe:animate-ecs-pop-in',
                   cardClass
                 )}
                 style={{ top: settingsPanelPos.top, left: settingsPanelPos.left }}
               >
-                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                  Workspace Settings
+                <header className="flex items-center justify-between border-b border-slate-200/60 px-4 py-3 dark:border-slate-700/60">
+                  <div>
+                    <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400 dark:text-slate-500">
+                      Settings
+                    </div>
+                    <div className="text-sm font-semibold">Workspace preferences</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowSettingsMenu(false)}
+                    aria-label="Close settings"
+                    className="ecs-interactive rounded-md border border-slate-300 px-2 py-0.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800/60"
+                  >
+                    Close
+                  </button>
+                </header>
+
+                <div className="flex-1 overflow-y-auto px-4 py-3">
+                  <p className="mb-4 rounded-lg border border-slate-200/80 bg-slate-50 px-3 py-2 text-[11px] leading-snug text-slate-600 dark:border-slate-600/80 dark:bg-slate-800/50 dark:text-slate-300">
+                    <span className="font-semibold text-slate-800 dark:text-slate-100">Theme, colors, and presets</span> live in the header{' '}
+                    <span className="font-mono text-[10px]">Theme</span> menu. Use <span className="font-mono text-[10px]">Layout</span>{' '}
+                    (⇅) to open the bottom panel and reorder the title bar, status strip, and main column. The{' '}
+                    <span className="font-mono text-[10px]">TTRPG</span> / <span className="font-mono text-[10px]">DnD</span> toggle sets sheet rules.
+                  </p>
+
+                  <SettingsSection title="Secret codes">
+                    <p className="text-[11px] leading-snug text-slate-600 dark:text-slate-300">
+                      Unlock extra themes on this device. Codes are checked locally; nothing is sent to a server.
+                    </p>
+                    {beeThemeUnlocked ? (
+                      <p className="mt-2 rounded-md border border-emerald-300/70 bg-emerald-50 px-3 py-2 text-[11px] text-emerald-900 dark:border-emerald-500/40 dark:bg-emerald-900/25 dark:text-emerald-100">
+                        Honey bee theme unlocked — open the header <span className="font-mono">Theme</span> menu, then{' '}
+                        <span className="font-semibold">Color scheme</span>.
+                      </p>
+                    ) : null}
+                    <div className="mt-2 flex gap-2">
+                      <input
+                        type="text"
+                        autoComplete="off"
+                        spellCheck={false}
+                        value={secretCodeInput}
+                        onChange={(event) => {
+                          setSecretCodeInput(event.target.value)
+                          setSecretCodeHint(null)
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== 'Enter') return
+                          event.preventDefault()
+                          document.getElementById('ecs-secret-code-apply')?.click()
+                        }}
+                        className="min-w-0 flex-1 rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                        placeholder="Enter code"
+                        aria-label="Secret code"
+                      />
+                      <button
+                        id="ecs-secret-code-apply"
+                        type="button"
+                        className="ecs-interactive shrink-0 rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 dark:border-slate-600 dark:hover:bg-slate-800/60"
+                        onClick={() => {
+                          if (normalizeSecretInput(secretCodeInput) === BEE_THEME_SECRET_NORMALIZED) {
+                            if (beeThemeUnlocked) {
+                              setSecretCodeHint('Honey bee theme is already unlocked.')
+                              return
+                            }
+                            persistBeeThemeUnlocked()
+                            setBeeThemeUnlocked(true)
+                            setSecretCodeInput('')
+                            setSecretCodeHint('Unlocked. Open Theme → Color scheme and pick Honey bee.')
+                            return
+                          }
+                          setSecretCodeHint('That code is not recognized.')
+                        }}
+                      >
+                        Apply
+                      </button>
+                    </div>
+                    {secretCodeHint ? (
+                      <p className="mt-2 text-[11px] leading-snug text-slate-600 dark:text-slate-300">{secretCodeHint}</p>
+                    ) : null}
+                  </SettingsSection>
+
+                  <SettingsSection title="Workspace layout">
+                    <SettingsField
+                      label="Layout edit mode"
+                      htmlFor="settings-layout-edit"
+                      hint="When on, use the bottom panel: drag rows, use ↑ ↓, or focus a row and use arrows, Home, or End. Battle drag-and-drop pauses while this is on."
+                    >
+                      <select
+                        id="settings-layout-edit"
+                        value={layoutEditMode ? 'on' : 'off'}
+                        onChange={(event) => setLayoutEditMode(event.target.value === 'on')}
+                        className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                      >
+                        <option value="off">Off</option>
+                        <option value="on">On — reorder regions</option>
+                      </select>
+                    </SettingsField>
+                    <p className="mt-2 text-[10px] leading-snug text-slate-500 dark:text-slate-400">
+                      Current order:{' '}
+                      <span className="font-mono text-slate-700 dark:text-slate-200">{workspaceFlow.join(' → ')}</span>
+                    </p>
+                  </SettingsSection>
+
+                  <SettingsSection title="Help & guidance">
+                    <SettingsField
+                      label="Guided helper text"
+                      htmlFor="setting-guided"
+                      hint="Show extra one-liners around the sidebar and tabs. Turn off once you know your way around. Per-tab Compact / Full controls live on the tab itself."
+                    >
+                      <select
+                        id="setting-guided"
+                        value={guidedSetup ? 'on' : 'off'}
+                        onChange={(event) => setGuidedSetup(event.target.value === 'on')}
+                        className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                      >
+                        <option value="on">On — show helper text</option>
+                        <option value="off">Off — hide helper text</option>
+                      </select>
+                    </SettingsField>
+                  </SettingsSection>
                 </div>
-                <label className="mt-2 block text-xs">
-                  <SettingsLabel hint="TTRPG mode is generic and lightweight. DnD mode adds 5e-specific fields like ability scores, skills, and standard actions to your sheets.">
-                    Mode
-                  </SettingsLabel>
-                  <select
-                    value={rulesMode}
-                    onChange={(event) => setRulesMode(event.target.value as RulesMode)}
-                    className="mt-1 w-full rounded border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+
+                <footer className="flex items-center justify-between border-t border-slate-200/60 px-4 py-3 text-xs dark:border-slate-700/60">
+                  <span className="text-slate-500 dark:text-slate-400">Changes apply immediately</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRulesMode('ttrpg')
+                      setColorScheme('default')
+                      setUseThemeLayout(true)
+                      setThemeMode('system')
+                      setCornerStyle('soft')
+                      setChromeWeight('standard')
+                      setSidebarPlacement('auto')
+                      setSidebarWidth('medium')
+                      setWorkspaceDensity('comfortable')
+                      setRegionFlowCustom(false)
+                      setWorkspaceFlow(themedWorkspaceFlowDefault('default', true))
+                      setActiveUiPresetId(null)
+                      setLayoutEditMode(false)
+                      setMergeGeneratedAttacks(false)
+                      setPersistThemePerAccount(true)
+                      setUiSoundsEnabled(false)
+                      setGuidedSetup(true)
+                      setCompactCreator(true)
+                      setCompactBattle(true)
+                      setAppMessage('Settings reset to defaults.')
+                    }}
+                    className="ecs-interactive rounded-md border border-slate-300 px-2 py-1 font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800/60"
                   >
-                    <option value="ttrpg">TTRPG mode</option>
-                    <option value="dnd">DnD mode</option>
-                  </select>
-                </label>
-                <label className="mt-2 block text-xs">
-                  <SettingsLabel hint="Pick the look of the app. Each scheme inspires a different era and platform — colors, animations, and components all change.">
-                    Color scheme
-                  </SettingsLabel>
-                  <select
-                    value={colorScheme}
-                    onChange={(event) => setColorScheme(event.target.value as ColorScheme)}
-                    className="mt-1 w-full rounded border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
-                  >
-                    <option value="default">Default · clean modern (no theme)</option>
-                    <option value="violet">Aero meadow · glossy mid‑2000s</option>
-                    <option value="teal">Classic chrome · late‑90s Windows</option>
-                    <option value="sunset">Y2K neon · electric early‑2000s</option>
-                    <option value="wii">Wii channels · silver + rounded tiles</option>
-                    <option value="xmb">XMB wave · PS3‑style metallic bar</option>
-                    <option value="cube">GameCube BIOS · indigo glass cube</option>
-                    <option value="wiiu">Wii U dashboard · cyan glass tiles</option>
-                    <option value="3ds">Nintendo 3DS · red shell + dual screen</option>
-                  </select>
-                </label>
-                <label className="mt-2 block text-xs">
-                  <SettingsLabel hint="Themed layout reshuffles the page (sidebar position, status bar, character list shape) to match the source material. Default layout keeps the colors but uses the standard sidebar-on-left workspace.">
-                    Page layout
-                  </SettingsLabel>
-                  <select
-                    value={useThemeLayout ? 'themed' : 'default'}
-                    onChange={(event) => setUseThemeLayout(event.target.value === 'themed')}
-                    className="mt-1 w-full rounded border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
-                  >
-                    <option value="themed">Themed layout (per scheme)</option>
-                    <option value="default">Default layout (sidebar left)</option>
-                  </select>
-                </label>
-                <label className="mt-2 block text-xs">
-                  <SettingsLabel hint="System follows your OS light/dark setting. Light forces a bright UI, Dark forces a dim UI for low-light play.">
-                    Theme
-                  </SettingsLabel>
-                  <select
-                    value={themeMode}
-                    onChange={(event) => setThemeMode(event.target.value as ThemeMode)}
-                    className="mt-1 w-full rounded border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
-                  >
-                    <option value="system">System</option>
-                    <option value="light">Light</option>
-                    <option value="dark">Dark</option>
-                  </select>
-                </label>
-                <label className="mt-2 block text-xs">
-                  <SettingsLabel hint="Clean is the standard surface treatment. Parchment overrides cards with a warm aged-paper feel, ideal for fantasy sessions.">
-                    Visual style
-                  </SettingsLabel>
-                  <select
-                    value={visualStyle}
-                    onChange={(event) => setVisualStyle(event.target.value as VisualStyle)}
-                    className="mt-1 w-full rounded border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
-                  >
-                    <option value="clean">Clean</option>
-                    <option value="parchment">Parchment</option>
-                  </select>
-                </label>
+                    Reset to defaults
+                  </button>
+                </footer>
               </div>
             </>,
             document.body
           )
         : null}
+
+      {layoutEditMode && isAuthed
+        ? createPortal(
+            <>
+              <div id="ecs-layout-howto" className="sr-only">
+                Workspace order is a vertical stack: title bar, status strip, then campaign and editor. Reorder only in
+                this panel: drag a row onto another row, use the up and down buttons, or focus a row with Tab and use
+                arrow keys, Home, or End. Press Escape or Done to exit.
+              </div>
+              <div role="status" aria-live="polite" aria-atomic="true" className="sr-only">
+                {layoutA11yMessage}
+              </div>
+              <div
+                role="dialog"
+                aria-label="Workspace order"
+                aria-describedby="ecs-layout-editor-hint ecs-layout-howto"
+                className="pointer-events-auto fixed bottom-5 left-1/2 z-[60000] flex w-[min(26rem,calc(100vw-1.25rem))] max-w-[calc(100vw-1.25rem)] -translate-x-1/2 flex-col gap-2 rounded-xl border border-amber-400/70 bg-amber-50/98 px-3 py-2.5 text-xs font-semibold text-amber-950 shadow-xl backdrop-blur-md dark:border-amber-400/50 dark:bg-slate-900/98 dark:text-amber-50"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-sm font-semibold text-amber-950 dark:text-amber-50">Workspace order</h2>
+                  <button
+                    type="button"
+                    className="ecs-interactive shrink-0 rounded-md border border-amber-600/60 bg-white/90 px-3 py-1.5 text-[11px] font-bold text-amber-950 hover:bg-white dark:border-amber-300/50 dark:bg-amber-950/40 dark:text-amber-50 dark:hover:bg-amber-950/70"
+                    onClick={() => setLayoutEditMode(false)}
+                  >
+                    Done
+                  </button>
+                </div>
+                <p
+                  id="ecs-layout-editor-hint"
+                  className="text-[11px] font-medium leading-snug text-amber-900/90 dark:text-amber-100/90"
+                >
+                  Top shows first. Drag a row, tap the arrows, or focus a row and use arrow keys, Home, or End.
+                </p>
+                <ul
+                  className="m-0 list-none space-y-1.5 p-0"
+                  aria-label="Vertical stack order"
+                  aria-describedby="ecs-layout-howto"
+                >
+                  {workspaceFlow.map((r, idx) => {
+                    const label = ecsWorkspaceRegionLabel(r)
+                    const isDropHighlight =
+                      layoutPanelDropOver === r && layoutPanelDragFrom !== null && layoutPanelDragFrom !== r
+                    return (
+                      <li
+                        key={r}
+                        tabIndex={0}
+                        draggable
+                        aria-label={`${label}, position ${idx + 1} of ${workspaceFlow.length}`}
+                        className={cn(
+                          'flex cursor-grab items-center justify-between gap-2 rounded-lg border border-amber-600/40 bg-white/90 px-2.5 py-2 text-[12px] text-amber-950 outline-none transition-[opacity,box-shadow] active:cursor-grabbing dark:border-amber-400/35 dark:bg-slate-950/70 dark:text-amber-50',
+                          'focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 focus-visible:ring-offset-amber-50 dark:focus-visible:ring-amber-400 dark:focus-visible:ring-offset-slate-900',
+                          layoutPanelDragFrom === r && 'opacity-55',
+                          isDropHighlight &&
+                            'ring-2 ring-amber-500 ring-offset-2 ring-offset-amber-50 dark:ring-amber-400 dark:ring-offset-slate-900'
+                        )}
+                        onDragStart={(e) => {
+                          setLayoutPanelDragFrom(r)
+                          e.dataTransfer.setData('application/ecs-flow', r)
+                          e.dataTransfer.effectAllowed = 'move'
+                        }}
+                        onDragOver={(e) => {
+                          e.preventDefault()
+                          e.dataTransfer.dropEffect = 'move'
+                          setLayoutPanelDropOver(r)
+                        }}
+                        onDragLeave={(e) => {
+                          if (!e.relatedTarget || !e.currentTarget.contains(e.relatedTarget as Node)) {
+                            setLayoutPanelDropOver((h) => (h === r ? null : h))
+                          }
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault()
+                          const raw = e.dataTransfer.getData('application/ecs-flow')
+                          if (raw === 'header' || raw === 'status' || raw === 'grid') reorderWorkspaceFlow(raw, r)
+                          setLayoutPanelDropOver(null)
+                          setLayoutPanelDragFrom(null)
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+                            e.preventDefault()
+                            moveWorkspaceRegionByOffset(r, -1)
+                            return
+                          }
+                          if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+                            e.preventDefault()
+                            moveWorkspaceRegionByOffset(r, 1)
+                            return
+                          }
+                          if (e.key === 'Home') {
+                            e.preventDefault()
+                            moveWorkspaceRegionToIndex(r, 0)
+                            return
+                          }
+                          if (e.key === 'End') {
+                            e.preventDefault()
+                            moveWorkspaceRegionToIndex(r, workspaceFlow.length)
+                          }
+                        }}
+                      >
+                        <div className="flex min-w-0 flex-1 items-center gap-2">
+                          <span className="select-none text-amber-600/70 dark:text-amber-300/80" aria-hidden>
+                            ⋮⋮
+                          </span>
+                          <span className="inline-flex h-6 min-w-[1.5rem] items-center justify-center rounded-md border border-amber-700/25 bg-amber-100/80 px-1.5 text-[11px] font-black tabular-nums text-amber-900 dark:border-amber-200/20 dark:bg-slate-900/80 dark:text-amber-100">
+                            {idx + 1}
+                          </span>
+                          <span className="truncate font-medium">{label}</span>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            className="ecs-interactive cursor-pointer rounded border border-amber-700/35 px-1.5 py-0.5 text-[12px] font-bold leading-none text-amber-900 hover:bg-white disabled:cursor-not-allowed disabled:opacity-35 dark:border-amber-200/30 dark:text-amber-50 dark:hover:bg-slate-800/80"
+                            disabled={idx <= 0}
+                            aria-label={`Move ${label} up`}
+                            onClick={() => moveWorkspaceRegionByOffset(r, -1)}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            className="ecs-interactive cursor-pointer rounded border border-amber-700/35 px-1.5 py-0.5 text-[12px] font-bold leading-none text-amber-900 hover:bg-white disabled:cursor-not-allowed disabled:opacity-35 dark:border-amber-200/30 dark:text-amber-50 dark:hover:bg-slate-800/80"
+                            disabled={idx >= workspaceFlow.length - 1}
+                            aria-label={`Move ${label} down`}
+                            onClick={() => moveWorkspaceRegionByOffset(r, 1)}
+                          >
+                            ↓
+                          </button>
+                        </div>
+                      </li>
+                    )
+                  })}
+                </ul>
+                <div className="border-t border-amber-400/40 pt-2 dark:border-amber-500/30">
+                  <button
+                    type="button"
+                    className="ecs-interactive rounded-md border border-amber-700/40 bg-white/90 px-2.5 py-1.5 text-[11px] font-bold text-amber-950 hover:bg-white dark:border-amber-300/40 dark:bg-amber-950/50 dark:text-amber-50 dark:hover:bg-amber-900/70"
+                    onClick={() => {
+                      setRegionFlowCustom(false)
+                      setWorkspaceFlow(themedWorkspaceFlowDefault(colorScheme, useThemeLayout))
+                      setActiveUiPresetId(null)
+                      setLayoutA11yMessage(
+                        `Reset vertical order to palette default: ${themedWorkspaceFlowDefault(colorScheme, useThemeLayout)
+                          .map(ecsWorkspaceRegionLabel)
+                          .join(', ')}.`
+                      )
+                    }}
+                  >
+                    Reset to palette default
+                  </button>
+                </div>
+              </div>
+            </>,
+            document.body
+          )
+        : null}
+
     </div>
   )
 }

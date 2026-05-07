@@ -9,6 +9,7 @@ import type {
   PasswordResetRequestResult,
   SimpleResult,
   SmtpStatusResult,
+  SyncChangedBroadcast,
   UserAccount
 } from '../shared/character-types'
 
@@ -26,6 +27,7 @@ declare global {
         level: number
         keywords: string[]
         stats: CharacterSaveInput['stats']
+        batchId?: string
       }) => Promise<GeneratedAttackResult>
     }
     accountApi: {
@@ -76,9 +78,7 @@ declare global {
       }) => Promise<CampaignBattleState>
     }
     syncApi: {
-      onChanged: (
-        callback: (payload: { scope: 'characters' | 'campaigns' | 'battle'; campaignId: string | null; at: number }) => void
-      ) => () => void
+      onChanged: (callback: (payload: SyncChangedBroadcast) => void) => () => void
     }
     appApi: {
       getVersion: () => Promise<string>

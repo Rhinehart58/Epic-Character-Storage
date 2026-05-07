@@ -8,6 +8,8 @@ import {
   deleteCharacter,
   getCampaignBattleState,
   getActiveAccountId,
+  getCampaignById,
+  getCharacterById,
   loginAccount,
   loginDevMode,
   logoutActiveAccount,
@@ -19,17 +21,37 @@ import {
   listCharactersForContext,
   requestPasswordReset,
   resetPasswordWithToken,
+  resolveAccountDisplayName,
   saveCampaignBattleState,
   saveCharacter,
   setActiveAccount
 } from './character-store'
 import { generateAttacksFromKeywords } from '../shared/attack-generator'
 import { getSmtpStatus, sendAccountConfirmationEmail, sendTestEmail } from './mailer'
-import type { CharacterSaveInput } from '../shared/character-types'
+import type { CharacterSaveInput, SyncActivityPayload, SyncChangedBroadcast } from '../shared/character-types'
 import { deletePortraitIfExists, pickAndStorePortrait, portraitsRoot } from './portraits'
 
-function publishRealtimeUpdate(scope: 'characters' | 'campaigns' | 'battle', campaignId?: string): void {
-  const payload = { scope, campaignId: campaignId ?? null, at: Date.now() }
+function publishRealtimeUpdate(
+  scope: SyncChangedBroadcast['scope'],
+  campaignId?: string | null,
+  activity?: Omit<SyncActivityPayload, 'at'> & { at?: number }
+): void {
+  const at = Date.now()
+  const payload: SyncChangedBroadcast = {
+    scope,
+    campaignId: campaignId === undefined ? null : campaignId,
+    at,
+    activity: activity
+      ? {
+          kind: activity.kind,
+          actorAccountId: activity.actorAccountId,
+          actorDisplayName: activity.actorDisplayName,
+          campaignId: activity.campaignId,
+          summary: activity.summary,
+          at: activity.at ?? at
+        }
+      : undefined
+  }
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send('sync:changed', payload)
   }
@@ -71,13 +93,31 @@ ipcMain.handle('characters:list', async (_event, payload: { accountId: string; c
   listCharactersForContext(payload.accountId, payload.campaignId)
 )
 ipcMain.handle('characters:save', async (_event, payload: CharacterSaveInput) => {
+  const prior = getCharacterById(payload.id ?? undefined)
   const saved = saveCharacter(payload)
-  publishRealtimeUpdate('characters', saved.campaignId ?? undefined)
+  const actorId = saved.ownerAccountId
+  publishRealtimeUpdate('characters', saved.campaignId ?? null, {
+    kind: prior ? 'character_updated' : 'character_created',
+    actorAccountId: actorId,
+    actorDisplayName: resolveAccountDisplayName(actorId),
+    campaignId: saved.campaignId,
+    summary: prior
+      ? `updated character “${saved.name}”.`
+      : `added character “${saved.name}”.`
+  })
   return saved
 })
 ipcMain.handle('characters:delete', async (_event, id: string) => {
+  const victim = getCharacterById(id)
+  const actorId = getActiveAccountId()
   deleteCharacter(id)
-  publishRealtimeUpdate('characters')
+  publishRealtimeUpdate('characters', victim?.campaignId ?? null, {
+    kind: 'character_deleted',
+    actorAccountId: actorId,
+    actorDisplayName: resolveAccountDisplayName(actorId),
+    campaignId: victim?.campaignId ?? null,
+    summary: victim ? `removed character “${victim.name}”.` : 'removed a character.'
+  })
 })
 ipcMain.handle(
   'portraits:choose',
@@ -123,24 +163,45 @@ ipcMain.handle('accounts:setActive', async (_event, accountId: string) => setAct
 ipcMain.handle('campaigns:listForAccount', async (_event, accountId: string) =>
   listCampaignsForAccount(accountId)
 )
-ipcMain.handle('campaigns:create', async (_event, payload: { accountId: string; name: string }) =>
-  {
-    const created = createCampaign(payload.accountId, payload.name)
-    publishRealtimeUpdate('campaigns', created.id)
-    return created
+ipcMain.handle('campaigns:create', async (_event, payload: { accountId: string; name: string }) => {
+  const created = createCampaign(payload.accountId, payload.name)
+  publishRealtimeUpdate('campaigns', created.id, {
+    kind: 'campaign_created',
+    actorAccountId: payload.accountId,
+    actorDisplayName: resolveAccountDisplayName(payload.accountId),
+    campaignId: created.id,
+    summary: `created shared campaign “${created.name}”.`
   })
-ipcMain.handle('campaigns:joinByCode', async (_event, payload: { accountId: string; code: string }) =>
-  {
-    const joined = joinCampaignByCode(payload.accountId, payload.code)
-    publishRealtimeUpdate('campaigns', joined?.id)
-    return joined
-  })
+  return created
+})
+ipcMain.handle('campaigns:joinByCode', async (_event, payload: { accountId: string; code: string }) => {
+  const joined = joinCampaignByCode(payload.accountId, payload.code)
+  if (joined) {
+    publishRealtimeUpdate('campaigns', joined.id, {
+      kind: 'campaign_joined',
+      actorAccountId: payload.accountId,
+      actorDisplayName: resolveAccountDisplayName(payload.accountId),
+      campaignId: joined.id,
+      summary: `joined campaign “${joined.name}”.`
+    })
+  }
+  return joined
+})
 ipcMain.handle('campaigns:members', async (_event, campaignId: string) => listCampaignMembers(campaignId))
 ipcMain.handle(
   'campaigns:leave',
   async (_event, payload: { accountId: string; campaignId: string }) => {
+    const campaign = getCampaignById(payload.campaignId)
     const result = leaveCampaign(payload.accountId, payload.campaignId)
-    publishRealtimeUpdate('campaigns', payload.campaignId)
+    if (result.ok) {
+      publishRealtimeUpdate('campaigns', payload.campaignId, {
+        kind: 'campaign_left',
+        actorAccountId: payload.accountId,
+        actorDisplayName: resolveAccountDisplayName(payload.accountId),
+        campaignId: payload.campaignId,
+        summary: campaign ? `left campaign “${campaign.name}”.` : 'left a campaign.'
+      })
+    }
     return result
   }
 )
@@ -169,7 +230,14 @@ ipcMain.handle(
     }
   ) => {
     const state = saveCampaignBattleState(payload)
-    publishRealtimeUpdate('battle', payload.campaignId)
+    const n = payload.participants.length
+    publishRealtimeUpdate('battle', payload.campaignId, {
+      kind: 'battle_updated',
+      actorAccountId: payload.updatedByAccountId,
+      actorDisplayName: resolveAccountDisplayName(payload.updatedByAccountId),
+      campaignId: payload.campaignId,
+      summary: `updated the encounter (round ${payload.round}, ${n} on the board).`
+    })
     return state
   }
 )
@@ -185,6 +253,7 @@ ipcMain.handle(
       level: number
       keywords: string[]
       stats: CharacterSaveInput['stats']
+      batchId?: string
     }
   ) => generateAttacksFromKeywords(payload)
 )

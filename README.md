@@ -13,7 +13,7 @@ Desktop app for logging tabletop RPG characters with clean UI, bracket-style cha
 - Login is always the first screen on app launch (no automatic session bypass).
 - Session timeout logout after inactivity for safety.
 - Theme modes: `system`, `light`, and `dark` (`system` follows OS appearance automatically).
-- Visual style modes: `clean` and `parchment`.
+- Themed page layout per color scheme, with a "default layout" toggle to keep the standard sidebar-on-left workspace.
 - Bracket-sheet editor for:
   - `[Character Name] - [Hcurrent/max]`
   - `[Normal Armor : current/max]`

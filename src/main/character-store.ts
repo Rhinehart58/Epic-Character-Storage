@@ -123,6 +123,23 @@ export function listCharactersForContext(accountId: string, campaignId: string |
     .sort((a, b) => a.name.localeCompare(b.name))
 }
 
+export function getCharacterById(id: string | null | undefined): CharacterRecord | null {
+  if (!id || id === 'draft') return null
+  return readDb().characters.find((row) => row.id === id) ?? null
+}
+
+export function getCampaignById(campaignId: string): CampaignRecord | null {
+  return readDb().campaigns.find((row) => row.id === campaignId) ?? null
+}
+
+export function resolveAccountDisplayName(accountId: string | null | undefined): string {
+  if (!accountId) return 'Someone'
+  const account = readDb().accounts.find((row) => row.id === accountId)
+  if (!account) return 'Unknown user'
+  const name = account.displayName?.trim()
+  return name && name.length > 0 ? name : account.email
+}
+
 export function saveCharacter(input: CharacterSaveInput): CharacterRecord {
   const db = readDb()
   const existingIdx = db.characters.findIndex((row) => row.id === input.id)

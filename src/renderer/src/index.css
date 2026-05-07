@@ -36,6 +36,208 @@ body {
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 16px), 95% 100%, 0 100%);
 }
 
+/* data-ecs-corners on <html> — "soft" uses rounded rects; "era" keeps clip-path shapes for period-accurate chrome */
+html[data-ecs-corners='soft'] .ecs-shape-card {
+  clip-path: none !important;
+  border-radius: 1rem !important;
+}
+
+html[data-ecs-corners='soft'] .ecs-shape-banner {
+  clip-path: none !important;
+  border-radius: 1.75rem !important;
+}
+
+html[data-ecs-corners='soft'] .ecs-stat-wedge {
+  clip-path: none !important;
+  border-radius: 0.75rem !important;
+}
+
+html[data-ecs-corners='soft'] .ecs-portrait-hex {
+  clip-path: none !important;
+  border-radius: 0.85rem !important;
+}
+
+/* Era: Tailwind rounded-* on the same node fights clip-path — flatten radius so cuts read cleanly */
+html[data-ecs-corners='era'] .ecs-shape-banner {
+  border-radius: 0 !important;
+}
+
+html[data-ecs-corners='era'] .ecs-shape-card {
+  border-radius: 0 !important;
+}
+
+html[data-ecs-palette='teal'][data-ecs-corners='soft'] .ecs-shape-card {
+  clip-path: polygon(0 4%, 3% 0, 97% 0, 100% 4%, 100% 96%, 97% 100%, 3% 100%, 0 96%) !important;
+  border-radius: 0 !important;
+}
+
+html[data-ecs-palette='teal'][data-ecs-corners='soft'] .ecs-shape-banner {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 16px), 95% 100%, 0 100%) !important;
+  border-radius: 0 !important;
+}
+
+html[data-ecs-palette='teal'][data-ecs-corners='soft'] .ecs-stat-wedge {
+  clip-path: polygon(8% 0, 100% 0, 100% 100%, 0 100%, 0 24%) !important;
+  border-radius: 0 !important;
+}
+
+html[data-ecs-palette='teal'][data-ecs-corners='soft'] .ecs-portrait-hex {
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%) !important;
+  border-radius: 0 !important;
+}
+
+/* Win98 chrome: `ecs-shape-soft` is meant for glossy themes — on teal keep tiles nearly square */
+html[data-ecs-palette='teal'] .ecs-shape-soft {
+  border-radius: 2px;
+}
+
+/* --- Additional corner vocab (beyond legacy soft / era) --- */
+html[data-ecs-corners='sharp'] .ecs-shape-card {
+  clip-path: none !important;
+  border-radius: 0.375rem !important;
+}
+
+html[data-ecs-corners='sharp'] .ecs-shape-banner {
+  clip-path: none !important;
+  border-radius: 0.35rem !important;
+}
+
+html[data-ecs-corners='sharp'] .ecs-stat-wedge {
+  clip-path: none !important;
+  border-radius: 0.35rem !important;
+}
+
+html[data-ecs-corners='sharp'] .ecs-portrait-hex {
+  clip-path: none !important;
+  border-radius: 0.45rem !important;
+}
+
+html[data-ecs-corners='organic'] .ecs-shape-card {
+  clip-path: none !important;
+  border-radius: 1.2rem !important;
+}
+
+html[data-ecs-corners='organic'] .ecs-shape-banner {
+  clip-path: none !important;
+  border-radius: 1.85rem !important;
+}
+
+html[data-ecs-corners='organic'] .ecs-stat-wedge {
+  clip-path: none !important;
+  border-radius: 0.95rem !important;
+}
+
+html[data-ecs-corners='organic'] .ecs-portrait-hex {
+  clip-path: none !important;
+  border-radius: 1rem !important;
+}
+
+html[data-ecs-corners='organic'] .ecs-shape-soft {
+  border-radius: 1.45rem 1.95rem 1.5rem 1.85rem / 1.55rem 1.25rem 1.7rem 1.2rem !important;
+}
+
+html[data-ecs-palette='teal'][data-ecs-corners='sharp'] .ecs-shape-card,
+html[data-ecs-palette='teal'][data-ecs-corners='organic'] .ecs-shape-card {
+  clip-path: polygon(0 4%, 3% 0, 97% 0, 100% 4%, 100% 96%, 97% 100%, 3% 100%, 0 96%) !important;
+  border-radius: 0 !important;
+}
+
+html[data-ecs-palette='teal'][data-ecs-corners='sharp'] .ecs-shape-banner,
+html[data-ecs-palette='teal'][data-ecs-corners='organic'] .ecs-shape-banner {
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 16px), 95% 100%, 0 100%) !important;
+  border-radius: 0 !important;
+}
+
+html[data-ecs-palette='teal'][data-ecs-corners='sharp'] .ecs-stat-wedge,
+html[data-ecs-palette='teal'][data-ecs-corners='organic'] .ecs-stat-wedge {
+  clip-path: polygon(8% 0, 100% 0, 100% 100%, 0 100%, 0 24%) !important;
+  border-radius: 0 !important;
+}
+
+html[data-ecs-palette='teal'][data-ecs-corners='sharp'] .ecs-portrait-hex,
+html[data-ecs-palette='teal'][data-ecs-corners='organic'] .ecs-portrait-hex {
+  clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%) !important;
+  border-radius: 0 !important;
+}
+
+html[data-ecs-palette='teal'][data-ecs-corners='organic'] .ecs-shape-soft {
+  border-radius: 2px;
+}
+
+/* Workspace density + optional drop-shadow chrome on the main grid */
+html[data-ecs-density='cozy'] .ecs-workspace-flow {
+  gap: 0.5rem;
+}
+
+html[data-ecs-density='cozy'] .ecs-workspace-grid {
+  gap: 0.75rem;
+}
+
+html[data-ecs-density='spacious'] .ecs-workspace-flow {
+  gap: 1.5rem;
+}
+
+html[data-ecs-density='spacious'] .ecs-workspace-grid {
+  gap: 2rem;
+}
+
+.ecs-workspace-grid.ecs-chrome-grid--light {
+  box-shadow:
+    0 0 0 1px rgba(148, 163, 184, 0.12),
+    0 10px 28px rgba(15, 23, 42, 0.07);
+}
+
+.ecs-workspace-grid.ecs-chrome-grid--heavy {
+  box-shadow:
+    0 0 0 1px rgba(148, 163, 184, 0.18),
+    0 28px 70px rgba(15, 23, 42, 0.22);
+}
+
+.dark .ecs-workspace-grid.ecs-chrome-grid--heavy {
+  box-shadow:
+    0 0 0 1px rgba(51, 65, 85, 0.5),
+    0 32px 80px rgba(0, 0, 0, 0.55);
+}
+
+/* User-forced sidebar: wins over themed palette column templates */
+html[data-ecs-force-sidebar='1'] {
+  --ecs-sidebar-w: 300px;
+}
+
+html[data-ecs-force-sidebar='1'][data-ecs-sidebar-w='compact'] {
+  --ecs-sidebar-w: 240px;
+}
+
+html[data-ecs-force-sidebar='1'][data-ecs-sidebar-w='wide'] {
+  --ecs-sidebar-w: 380px;
+}
+
+@media (min-width: 1024px) {
+  html[data-ecs-force-sidebar='1'][data-ecs-sidebar='left'] .ecs-workspace-grid {
+    grid-template-columns: var(--ecs-sidebar-w) 1fr !important;
+  }
+
+  html[data-ecs-force-sidebar='1'][data-ecs-sidebar='left'] .ecs-workspace-grid > aside {
+    order: 1 !important;
+  }
+
+  html[data-ecs-force-sidebar='1'][data-ecs-sidebar='left'] .ecs-workspace-grid > main {
+    order: 2 !important;
+  }
+
+  html[data-ecs-force-sidebar='1'][data-ecs-sidebar='right'] .ecs-workspace-grid {
+    grid-template-columns: 1fr var(--ecs-sidebar-w) !important;
+  }
+
+  html[data-ecs-force-sidebar='1'][data-ecs-sidebar='right'] .ecs-workspace-grid > aside {
+    order: 2 !important;
+  }
+
+  html[data-ecs-force-sidebar='1'][data-ecs-sidebar='right'] .ecs-workspace-grid > main {
+    order: 1 !important;
+  }
+}
+
 .ecs-portrait-hex {
   clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
 }
@@ -100,28 +302,28 @@ body {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 118% 92% at 4% -8%, rgba(14, 165, 233, 0.52), transparent 56%),
-    radial-gradient(ellipse 102% 84% at 100% 104%, rgba(34, 197, 94, 0.42), transparent 54%),
-    radial-gradient(ellipse 62% 52% at 78% 6%, rgba(251, 191, 36, 0.28), transparent 46%),
-    radial-gradient(ellipse 72% 58% at 18% 92%, rgba(244, 114, 182, 0.18), transparent 52%),
-    radial-gradient(ellipse 55% 40% at 48% 48%, rgba(255, 255, 255, 0.55), transparent 62%),
+    radial-gradient(ellipse 100% 88% at 0% 0%, rgba(236, 72, 153, 0.45), transparent 50%),
+    radial-gradient(ellipse 90% 80% at 100% 0%, rgba(34, 211, 238, 0.5), transparent 52%),
+    radial-gradient(ellipse 70% 60% at 100% 100%, rgba(190, 242, 100, 0.42), transparent 48%),
+    radial-gradient(ellipse 65% 55% at 0% 100%, rgba(251, 191, 36, 0.35), transparent 46%),
+    radial-gradient(ellipse 50% 45% at 48% 42%, rgba(255, 255, 255, 0.75), transparent 58%),
     linear-gradient(
-      162deg,
-      #bfdbfe 0%,
-      #d9f99d 26%,
-      #fef08a 52%,
-      #fbcfe8 78%,
-      #e0f2fe 100%
+      155deg,
+      #38bdf8 0%,
+      #22d3ee 18%,
+      #bef264 42%,
+      #f9a8d4 68%,
+      #c4b5fd 100%
     );
 }
 
 .dark .ecs-aero-sky {
   background:
-    radial-gradient(ellipse 115% 88% at -8% -4%, rgba(6, 182, 212, 0.48), transparent 54%),
-    radial-gradient(ellipse 96% 78% at 108% 108%, rgba(16, 185, 129, 0.38), transparent 52%),
-    radial-gradient(ellipse 54% 42% at 62% 2%, rgba(192, 38, 211, 0.22), transparent 44%),
-    radial-gradient(ellipse 68% 52% at 22% 94%, rgba(59, 130, 246, 0.14), transparent 50%),
-    linear-gradient(172deg, #020617 0%, #0f766e 38%, #1e3a8a 72%, #050816 100%);
+    radial-gradient(ellipse 95% 85% at 0% 0%, rgba(192, 38, 211, 0.35), transparent 48%),
+    radial-gradient(ellipse 88% 78% at 100% 8%, rgba(6, 182, 212, 0.42), transparent 50%),
+    radial-gradient(ellipse 70% 60% at 100% 100%, rgba(16, 185, 129, 0.32), transparent 46%),
+    radial-gradient(ellipse 60% 50% at 10% 90%, rgba(59, 130, 246, 0.22), transparent 44%),
+    linear-gradient(168deg, #020617 0%, #134e4a 28%, #1e3a8a 55%, #312e81 82%, #020617 100%);
 }
 
 .ecs-aero-vignette {
@@ -314,11 +516,151 @@ html[data-ecs-palette='violet'] .ecs-palette-layer--violet,
 html[data-ecs-palette='teal'] .ecs-palette-layer--teal,
 html[data-ecs-palette='sunset'] .ecs-palette-layer--sunset,
 html[data-ecs-palette='wii'] .ecs-palette-layer--wii,
-html[data-ecs-palette='xmb'] .ecs-palette-layer--xmb,
+html[data-ecs-palette='ps3'] .ecs-palette-layer--ps3,
+html[data-ecs-palette='xbox360'] .ecs-palette-layer--xbox360,
 html[data-ecs-palette='cube'] .ecs-palette-layer--cube,
 html[data-ecs-palette='wiiu'] .ecs-palette-layer--wiiu,
-html[data-ecs-palette='3ds'] .ecs-palette-layer--3ds {
+html[data-ecs-palette='3ds'] .ecs-palette-layer--3ds,
+html[data-ecs-palette='bee'] .ecs-palette-layer--bee {
   display: block;
+}
+
+/* --- Era decor: subtle period-accurate ambience (CSS only) --- */
+html[data-ecs-palette='default'] .ecs-default-backdrop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.04;
+  background-image: repeating-linear-gradient(
+    -7deg,
+    transparent,
+    transparent 14px,
+    rgba(100, 116, 139, 0.07) 14px,
+    rgba(100, 116, 139, 0.07) 15px
+  );
+}
+html[data-ecs-tone='dark'][data-ecs-palette='default'] .ecs-default-backdrop::before {
+  opacity: 0.06;
+}
+
+html[data-ecs-palette='violet'] .ecs-aero-sky::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.34;
+  background:
+    radial-gradient(ellipse 118% 52% at 50% 108%, rgba(34, 197, 94, 0.38), rgba(22, 163, 74, 0.22) 36%, transparent 52%),
+    radial-gradient(ellipse 52% 34% at 16% 84%, rgba(21, 128, 61, 0.28), transparent 50%),
+    radial-gradient(ellipse 58% 36% at 88% 78%, rgba(125, 211, 252, 0.32), transparent 50%),
+    radial-gradient(ellipse 92% 52% at 10% 10%, rgba(255, 255, 255, 0.62), transparent 48%),
+    radial-gradient(ellipse 78% 44% at 92% 6%, rgba(96, 165, 250, 0.38), transparent 46%),
+    linear-gradient(172deg, transparent 40%, rgba(56, 189, 248, 0.12) 100%);
+  mix-blend-mode: soft-light;
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='violet'] .ecs-aero-sky::before {
+  opacity: 0.3;
+  background:
+    radial-gradient(ellipse 108% 48% at 50% 100%, rgba(6, 78, 59, 0.55), transparent 50%),
+    radial-gradient(ellipse 42% 26% at 88% 8%, rgba(224, 242, 254, 0.28), transparent 50%),
+    radial-gradient(ellipse 95% 58% at 50% -6%, rgba(37, 99, 235, 0.48), transparent 52%),
+    linear-gradient(188deg, rgba(2, 6, 23, 0.4) 0%, transparent 48%);
+  mix-blend-mode: overlay;
+}
+
+html[data-ecs-palette='teal'] .ecs-win98-wallpaper::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.12;
+  background:
+    radial-gradient(ellipse 140% 80% at 22% 28%, rgba(255, 255, 255, 0.1), transparent 46%),
+    radial-gradient(ellipse 120% 70% at 78% 72%, rgba(0, 0, 0, 0.07), transparent 42%);
+}
+
+html[data-ecs-palette='sunset'] .ecs-y2k-space::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.18;
+  background:
+    radial-gradient(circle at 12% 18%, rgba(244, 114, 182, 0.42), transparent 36%),
+    radial-gradient(circle at 88% 22%, rgba(217, 70, 239, 0.28), transparent 40%),
+    radial-gradient(circle at 50% 88%, rgba(34, 211, 238, 0.22), transparent 44%);
+  mix-blend-mode: screen;
+}
+
+html[data-ecs-palette='wii'] .ecs-wii-backdrop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.16;
+  background-image: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 76px,
+    rgba(255, 255, 255, 0.07) 76px,
+    rgba(255, 255, 255, 0.07) 78px
+  );
+  mask-image: radial-gradient(ellipse 95% 80% at 50% 40%, black, transparent 78%);
+}
+
+html[data-ecs-palette='cube'] .ecs-cube-backdrop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.26;
+  background:
+    radial-gradient(circle at 14% 86%, rgba(251, 146, 60, 0.38), transparent 36%),
+    radial-gradient(circle at 88% 12%, rgba(167, 139, 250, 0.32), transparent 38%),
+    radial-gradient(circle at 50% 48%, rgba(226, 232, 240, 0.1), transparent 42%);
+  mix-blend-mode: screen;
+}
+
+html[data-ecs-palette='ps3'] .ecs-xmb-backdrop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.11;
+  background: linear-gradient(185deg, rgba(56, 189, 248, 0.07) 0%, transparent 34%, transparent 66%, rgba(2, 6, 23, 0.42) 100%);
+}
+
+html[data-ecs-palette='wiiu'] .ecs-wiiu-backdrop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.22;
+  background-image:
+    radial-gradient(circle at 22% 68%, rgba(255, 255, 255, 0.35) 0%, transparent 26%),
+    radial-gradient(circle at 78% 58%, rgba(255, 255, 255, 0.22) 0%, transparent 20%),
+    radial-gradient(circle at 48% 42%, rgba(255, 255, 255, 0.12) 0%, transparent 18%),
+    linear-gradient(90deg, transparent 49%, rgba(14, 165, 233, 0.06) 49%, rgba(14, 165, 233, 0.06) 51%, transparent 51%),
+    linear-gradient(0deg, transparent 49%, rgba(14, 165, 233, 0.05) 49%, rgba(14, 165, 233, 0.05) 51%, transparent 51%);
+  background-size:
+    auto,
+    auto,
+    auto,
+    56px 56px,
+    56px 56px;
+}
+
+html[data-ecs-palette='3ds'] .ecs-3ds-backdrop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.11;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.14) 0%, transparent 36%),
+    radial-gradient(ellipse 120% 48% at 50% 100%, rgba(190, 18, 60, 0.09), transparent 55%);
 }
 
 /* Default theme: clean modern neutral surface */
@@ -326,14 +668,16 @@ html[data-ecs-palette='3ds'] .ecs-palette-layer--3ds {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse at top, rgba(241, 245, 249, 0.9), transparent 65%),
-    linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+    radial-gradient(ellipse 80% 55% at 100% 0%, rgba(56, 189, 248, 0.2), transparent 55%),
+    radial-gradient(ellipse 70% 50% at 0% 100%, rgba(99, 102, 241, 0.14), transparent 50%),
+    linear-gradient(125deg, #f1f5f9 0%, #f8fafc 38%, #e0f2fe 100%);
 }
 
 html[data-ecs-tone='dark'][data-ecs-palette='default'] .ecs-default-backdrop {
   background:
-    radial-gradient(ellipse at top, rgba(15, 23, 42, 0.95), transparent 65%),
-    linear-gradient(180deg, #0f172a 0%, #020617 100%);
+    radial-gradient(ellipse 85% 60% at 80% 10%, rgba(56, 189, 248, 0.12), transparent 52%),
+    radial-gradient(ellipse 70% 50% at 10% 90%, rgba(129, 140, 248, 0.1), transparent 48%),
+    linear-gradient(180deg, #0f172a 0%, #020617 55%, #0c1929 100%);
 }
 
 /* Windows‑95‑era teal desktop + chunky gray chrome */
@@ -342,12 +686,15 @@ html[data-ecs-tone='dark'][data-ecs-palette='default'] .ecs-default-backdrop {
   inset: 0;
   background-color: #008080;
   background-image:
-    radial-gradient(circle at 18% 22%, rgba(255, 255, 255, 0.07) 0%, transparent 42%),
-    radial-gradient(circle at 82% 78%, rgba(0, 0, 0, 0.12) 0%, transparent 38%);
+    radial-gradient(ellipse 120% 70% at 20% 25%, rgba(255, 255, 255, 0.18), transparent 45%),
+    radial-gradient(ellipse 100% 60% at 75% 70%, rgba(0, 0, 0, 0.14), transparent 42%),
+    radial-gradient(ellipse 55% 40% at 50% 50%, rgba(255, 255, 255, 0.06), transparent 50%),
+    radial-gradient(circle at 18% 22%, rgba(255, 255, 255, 0.09) 0%, transparent 42%),
+    radial-gradient(circle at 82% 78%, rgba(0, 0, 0, 0.14) 0%, transparent 38%);
 }
 
 html[data-ecs-tone='dark'][data-ecs-palette='teal'] .ecs-win98-wallpaper {
-  background-color: #004d4d;
+  background-color: #003d3d;
 }
 
 .ecs-win98-pixel-grid {
@@ -404,6 +751,59 @@ html[data-ecs-tone='dark'][data-ecs-palette='teal'] .ecs-aero-login-shell {
   background: #004040;
 }
 
+/* Login shell: match each palette (Aero/violet keeps the default aqua meadow above). */
+html[data-ecs-palette='default'] .ecs-aero-login-shell {
+  background:
+    radial-gradient(ellipse at top, rgba(241, 245, 249, 0.9), transparent 65%),
+    linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='default'] .ecs-aero-login-shell {
+  background:
+    radial-gradient(ellipse at top, rgba(15, 23, 42, 0.95), transparent 65%),
+    linear-gradient(180deg, #0f172a 0%, #020617 100%);
+}
+
+html[data-ecs-palette='violet'] .ecs-aero-login-shell {
+  background:
+    radial-gradient(ellipse 88% 72% at 10% 12%, rgba(224, 242, 254, 0.55), transparent 52%),
+    radial-gradient(ellipse 70% 55% at 90% 88%, rgba(190, 242, 100, 0.22), transparent 50%),
+    linear-gradient(162deg, #ecfeff 0%, #f0fdf4 42%, #eff6ff 100%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='violet'] .ecs-aero-login-shell {
+  background:
+    radial-gradient(ellipse 82% 62% at 12% 14%, rgba(8, 47, 73, 0.78), transparent 55%),
+    radial-gradient(ellipse 58% 45% at 88% 82%, rgba(22, 163, 74, 0.14), transparent 50%),
+    linear-gradient(168deg, #020617 0%, #0f172a 42%, #042f2e 100%);
+}
+
+html[data-ecs-palette='wiiu'] .ecs-aero-login-shell {
+  background:
+    radial-gradient(ellipse 88% 65% at 12% 16%, rgba(103, 232, 249, 0.28), transparent 52%),
+    radial-gradient(ellipse 70% 52% at 88% 84%, rgba(125, 211, 252, 0.24), transparent 52%),
+    linear-gradient(168deg, #ecfeff 0%, #dbeafe 50%, #cffafe 100%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='wiiu'] .ecs-aero-login-shell {
+  background:
+    radial-gradient(ellipse 82% 62% at 12% 14%, rgba(6, 182, 212, 0.24), transparent 55%),
+    linear-gradient(170deg, #031525 0%, #082f49 50%, #111827 100%);
+}
+
+html[data-ecs-palette='3ds'] .ecs-aero-login-shell {
+  background:
+    radial-gradient(circle at 12% 14%, rgba(251, 113, 133, 0.24), transparent 40%),
+    radial-gradient(circle at 88% 82%, rgba(127, 29, 29, 0.22), transparent 44%),
+    linear-gradient(180deg, #ffe4e6 0%, #fecaca 50%, #fca5a5 100%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='3ds'] .ecs-aero-login-shell {
+  background:
+    radial-gradient(circle at 14% 16%, rgba(244, 63, 94, 0.3), transparent 42%),
+    linear-gradient(180deg, #450a0a 0%, #18181b 48%, #7f1d1d 100%);
+}
+
 html[data-ecs-palette='sunset'] .ecs-aero-login-shell {
   background:
     radial-gradient(ellipse 90% 70% at 20% 15%, rgba(251, 207, 232, 0.45), transparent 55%),
@@ -426,15 +826,15 @@ html[data-ecs-tone='dark'][data-ecs-palette='sunset'] .ecs-aero-login-shell {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 110% 85% at 50% 115%, rgba(255, 255, 255, 0.55), transparent 52%),
-    radial-gradient(ellipse 70% 55% at 12% 18%, rgba(255, 255, 255, 0.35), transparent 48%),
-    linear-gradient(185deg, #e8eaef 0%, #d3d8e2 42%, #b9c0cd 100%);
+    radial-gradient(ellipse 110% 85% at 50% 115%, rgba(255, 255, 255, 0.65), transparent 52%),
+    radial-gradient(ellipse 75% 55% at 8% 12%, rgba(125, 211, 252, 0.35), transparent 48%),
+    linear-gradient(188deg, #f1f5f9 0%, #94a3b8 55%, #64748b 100%);
 }
 
 html[data-ecs-tone='dark'][data-ecs-palette='wii'] .ecs-wii-backdrop {
   background:
-    radial-gradient(ellipse 100% 70% at 50% 100%, rgba(80, 140, 200, 0.12), transparent 55%),
-    linear-gradient(185deg, #2c313b 0%, #1f232c 45%, #14171e 100%);
+    radial-gradient(ellipse 100% 70% at 50% 100%, rgba(56, 189, 248, 0.15), transparent 55%),
+    linear-gradient(188deg, #1e293b 0%, #0f172a 50%, #020617 100%);
 }
 
 .ecs-wii-channel-grid {
@@ -546,7 +946,7 @@ html[data-ecs-tone='dark'][data-ecs-palette='wii'] .ecs-aero-login-shell {
     linear-gradient(178deg, #1e222b 0%, #151820 100%);
 }
 
-/* PS3 XMB-inspired metallic depth + drifting wave sheen */
+/* PS3 XMB-inspired metallic depth + drifting wave sheen (vertical column read) */
 .ecs-xmb-scene {
   isolation: isolate;
   --ecs-xmb-tint: rgba(2, 205, 199, 0.12);
@@ -557,9 +957,10 @@ html[data-ecs-tone='dark'][data-ecs-palette='wii'] .ecs-aero-login-shell {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 120% 90% at 50% -12%, var(--ecs-xmb-tint), transparent 48%),
-    radial-gradient(ellipse 80% 65% at 78% 84%, var(--ecs-xmb-tint-strong), transparent 55%),
-    linear-gradient(172deg, #070c14 0%, #121c2e 38%, #05070e 100%);
+    radial-gradient(ellipse 120% 88% at 50% -16%, rgba(56, 189, 248, 0.36), transparent 44%),
+    radial-gradient(ellipse 68% 52% at 8% 88%, rgba(100, 116, 139, 0.18), transparent 48%),
+    radial-gradient(ellipse 82% 62% at 92% 78%, rgba(30, 64, 175, 0.2), transparent 52%),
+    linear-gradient(178deg, #000000 0%, #0a1220 38%, #020617 100%);
 }
 
 .ecs-xmb-wave-layer {
@@ -615,71 +1016,71 @@ html[data-ecs-tone='dark'][data-ecs-palette='wii'] .ecs-aero-login-shell {
   mask-image: linear-gradient(to bottom, transparent 0%, black 25%, black 80%, transparent 100%);
 }
 
-html[data-ecs-tone='dark'][data-ecs-palette='xmb'] .ecs-xmb-column-guides {
+html[data-ecs-tone='dark'][data-ecs-palette='ps3'] .ecs-xmb-column-guides {
   opacity: 0.1;
 }
 
-html[data-ecs-month='1'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+html[data-ecs-month='1'][data-ecs-palette='ps3'] .ecs-xmb-scene {
   --ecs-xmb-tint: rgba(216, 191, 26, 0.14);
   --ecs-xmb-tint-strong: rgba(229, 167, 8, 0.2);
 }
 
-html[data-ecs-month='2'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+html[data-ecs-month='2'][data-ecs-palette='ps3'] .ecs-xmb-scene {
   --ecs-xmb-tint: rgba(109, 178, 23, 0.14);
   --ecs-xmb-tint-strong: rgba(23, 136, 22, 0.2);
 }
 
-html[data-ecs-month='3'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+html[data-ecs-month='3'][data-ecs-palette='ps3'] .ecs-xmb-scene {
   --ecs-xmb-tint: rgba(225, 126, 154, 0.14);
   --ecs-xmb-tint-strong: rgba(180, 68, 192, 0.2);
 }
 
-html[data-ecs-month='4'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+html[data-ecs-month='4'][data-ecs-palette='ps3'] .ecs-xmb-scene {
   --ecs-xmb-tint: rgba(23, 136, 22, 0.14);
   --ecs-xmb-tint-strong: rgba(2, 205, 199, 0.2);
 }
 
-html[data-ecs-month='5'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+html[data-ecs-month='5'][data-ecs-palette='ps3'] .ecs-xmb-scene {
   --ecs-xmb-tint: rgba(154, 97, 200, 0.14);
   --ecs-xmb-tint-strong: rgba(180, 68, 192, 0.2);
 }
 
-html[data-ecs-month='6'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+html[data-ecs-month='6'][data-ecs-palette='ps3'] .ecs-xmb-scene {
   --ecs-xmb-tint: rgba(2, 205, 199, 0.14);
   --ecs-xmb-tint-strong: rgba(12, 118, 192, 0.2);
 }
 
-html[data-ecs-month='7'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+html[data-ecs-month='7'][data-ecs-palette='ps3'] .ecs-xmb-scene {
   --ecs-xmb-tint: rgba(12, 118, 192, 0.14);
   --ecs-xmb-tint-strong: rgba(56, 189, 248, 0.2);
 }
 
-html[data-ecs-month='8'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+html[data-ecs-month='8'][data-ecs-palette='ps3'] .ecs-xmb-scene {
   --ecs-xmb-tint: rgba(180, 68, 192, 0.14);
   --ecs-xmb-tint-strong: rgba(225, 126, 154, 0.2);
 }
 
-html[data-ecs-month='9'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+html[data-ecs-month='9'][data-ecs-palette='ps3'] .ecs-xmb-scene {
   --ecs-xmb-tint: rgba(229, 167, 8, 0.14);
   --ecs-xmb-tint-strong: rgba(216, 191, 26, 0.2);
 }
 
-html[data-ecs-month='10'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+html[data-ecs-month='10'][data-ecs-palette='ps3'] .ecs-xmb-scene {
   --ecs-xmb-tint: rgba(135, 91, 30, 0.15);
   --ecs-xmb-tint-strong: rgba(229, 167, 8, 0.2);
 }
 
-html[data-ecs-month='11'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+html[data-ecs-month='11'][data-ecs-palette='ps3'] .ecs-xmb-scene {
   --ecs-xmb-tint: rgba(227, 65, 42, 0.15);
   --ecs-xmb-tint-strong: rgba(225, 126, 154, 0.22);
 }
 
-html[data-ecs-month='12'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+html[data-ecs-month='12'][data-ecs-palette='ps3'] .ecs-xmb-scene {
   --ecs-xmb-tint: rgba(203, 203, 203, 0.12);
   --ecs-xmb-tint-strong: rgba(148, 163, 184, 0.2);
 }
 
-html[data-ecs-palette='xmb'] .ecs-aero-login-shell {
+html[data-ecs-palette='ps3'] .ecs-aero-login-shell {
   background: linear-gradient(168deg, #0b1525 0%, #06090f 100%);
 }
 
@@ -697,6 +1098,100 @@ html[data-ecs-palette='xmb'] .ecs-aero-login-shell {
   background-size: 200% 200%;
 }
 
+/* Xbox 360 NXE-inspired charcoal field + Xbox green channel glow */
+.ecs-nxe-scene {
+  isolation: isolate;
+}
+
+.ecs-nxe-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 125% 85% at 10% 100%, rgba(22, 163, 74, 0.32), transparent 52%),
+    radial-gradient(ellipse 70% 50% at 100% 0%, rgba(74, 222, 128, 0.1), transparent 46%),
+    linear-gradient(176deg, #0c0c0c 0%, #171717 42%, #050505 100%);
+}
+
+html[data-ecs-palette='xbox360'] .ecs-nxe-backdrop::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0.14;
+  background: linear-gradient(188deg, rgba(74, 222, 128, 0.07) 0%, transparent 42%, rgba(0, 0, 0, 0.55) 100%);
+}
+
+.ecs-nxe-blade-sweep {
+  position: absolute;
+  inset: -22% -12%;
+  opacity: 0.24;
+  pointer-events: none;
+  background: linear-gradient(
+    96deg,
+    transparent 0%,
+    rgba(132, 204, 22, 0.09) 34%,
+    transparent 52%,
+    rgba(34, 197, 94, 0.11) 72%,
+    transparent 100%
+  );
+  background-size: 240% 100%;
+  filter: blur(1.5px);
+}
+
+.ecs-nxe-ring-glow {
+  position: absolute;
+  left: -28%;
+  bottom: -42%;
+  width: 105%;
+  height: 88%;
+  border-radius: 55%;
+  opacity: 0.2;
+  pointer-events: none;
+  background: radial-gradient(ellipse at 50% 28%, rgba(163, 230, 53, 0.42), rgba(22, 163, 74, 0.12) 40%, transparent 64%);
+  filter: blur(46px);
+}
+
+.ecs-nxe-horizontal-lines {
+  position: absolute;
+  inset: 0;
+  opacity: 0.055;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+    180deg,
+    transparent,
+    transparent 68px,
+    rgba(255, 255, 255, 0.07) 68px,
+    rgba(255, 255, 255, 0.07) 69px
+  );
+  mask-image: radial-gradient(ellipse 96% 78% at 50% 108%, black, transparent 72%);
+}
+
+html[data-ecs-palette='xbox360'] .ecs-aero-login-shell {
+  background: linear-gradient(168deg, #0c0f0c 0%, #050505 55%, #081208 100%);
+}
+
+html[data-ecs-palette='xbox360'] .ecs-theme-shell {
+  font-family: 'Segoe UI', 'Arial', 'Helvetica Neue', sans-serif;
+}
+
+html[data-ecs-palette='xbox360'] .ecs-theme-shell input,
+html[data-ecs-palette='xbox360'] .ecs-theme-shell select,
+html[data-ecs-palette='xbox360'] .ecs-theme-shell textarea {
+  border-radius: 0.4rem;
+  border-color: rgba(63, 63, 70, 0.95);
+  background: rgba(9, 9, 11, 0.9);
+  color: #fafafa;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+html[data-ecs-palette='xbox360'] .ecs-theme-shell input:focus,
+html[data-ecs-palette='xbox360'] .ecs-theme-shell select:focus,
+html[data-ecs-palette='xbox360'] .ecs-theme-shell textarea:focus {
+  outline: none;
+  border-color: rgba(132, 204, 22, 0.75);
+  box-shadow: 0 0 0 2px rgba(74, 222, 128, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
 /* GameCube BIOS-inspired indigo glass + floating cubes */
 .ecs-cube-scene {
   isolation: isolate;
@@ -706,16 +1201,18 @@ html[data-ecs-palette='xmb'] .ecs-aero-login-shell {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 90% 70% at 22% 20%, rgba(165, 180, 252, 0.32), transparent 52%),
-    radial-gradient(ellipse 78% 60% at 84% 82%, rgba(148, 163, 184, 0.2), transparent 54%),
-    linear-gradient(160deg, #050816 0%, #1e3a8a 45%, #0f172a 100%);
+    radial-gradient(ellipse 92% 72% at 18% 16%, rgba(129, 140, 248, 0.55), transparent 50%),
+    radial-gradient(ellipse 70% 58% at 88% 82%, rgba(249, 115, 22, 0.18), transparent 52%),
+    radial-gradient(ellipse 48% 38% at 52% 46%, rgba(226, 232, 240, 0.12), transparent 55%),
+    linear-gradient(152deg, #0a0518 0%, #312e81 38%, #1e1b4b 68%, #020617 100%);
 }
 
 html[data-ecs-tone='dark'][data-ecs-palette='cube'] .ecs-cube-backdrop {
   background:
-    radial-gradient(ellipse 86% 70% at 18% 18%, rgba(129, 140, 248, 0.28), transparent 54%),
-    radial-gradient(ellipse 68% 56% at 86% 80%, rgba(148, 163, 184, 0.12), transparent 48%),
-    linear-gradient(162deg, #030712 0%, #1e3a8a 42%, #0b1220 100%);
+    radial-gradient(ellipse 88% 70% at 14% 14%, rgba(99, 102, 241, 0.42), transparent 52%),
+    radial-gradient(ellipse 64% 52% at 90% 80%, rgba(234, 88, 12, 0.12), transparent 48%),
+    radial-gradient(ellipse 42% 34% at 50% 44%, rgba(148, 163, 184, 0.08), transparent 52%),
+    linear-gradient(158deg, #020617 0%, #1e1b4b 40%, #0f172a 78%, #020617 100%);
 }
 
 .ecs-cube-facet-grid {
@@ -767,7 +1264,8 @@ html[data-ecs-tone='dark'][data-ecs-palette='cube'] .ecs-cube-ghost-cube {
     0 0 24px rgba(99, 102, 241, 0.3);
 }
 
-.ecs-cube-lime-pulse {
+/* BIOS “orb” wash — silver / violet (not retail lime) */
+.ecs-cube-sphere-glow {
   position: absolute;
   width: min(90vmin, 720px);
   height: min(55vmin, 420px);
@@ -776,13 +1274,112 @@ html[data-ecs-tone='dark'][data-ecs-palette='cube'] .ecs-cube-ghost-cube {
   transform: translate(-50%, -50%) rotate(-8deg);
   border-radius: 40% 60% 48% 52% / 55% 42% 58% 45%;
   pointer-events: none;
-  opacity: 0.12;
+  opacity: 0.14;
   filter: blur(52px);
-  background: radial-gradient(ellipse at center, rgba(191, 219, 254, 0.45), transparent 68%);
+  background: radial-gradient(ellipse at center, rgba(251, 191, 36, 0.35), rgba(196, 181, 253, 0.28) 42%, transparent 68%);
 }
 
-html[data-ecs-tone='dark'][data-ecs-palette='cube'] .ecs-cube-lime-pulse {
+html[data-ecs-tone='dark'][data-ecs-palette='cube'] .ecs-cube-sphere-glow {
+  opacity: 0.16;
+  background: radial-gradient(ellipse at center, rgba(196, 181, 253, 0.32), rgba(251, 146, 60, 0.12) 48%, transparent 68%);
+}
+
+/* Bee hive ambience (unlock via Settings → Secret codes) */
+.ecs-bee-scene {
+  isolation: isolate;
+}
+
+.ecs-bee-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 95% 80% at 50% 110%, rgba(251, 191, 36, 0.45), transparent 55%),
+    radial-gradient(ellipse 55% 45% at 8% 12%, rgba(253, 224, 71, 0.2), transparent 48%),
+    linear-gradient(172deg, #fffbeb 0%, #fde68a 38%, #f59e0b 72%, #451a03 100%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='bee'] .ecs-bee-backdrop {
+  background:
+    radial-gradient(ellipse 90% 75% at 50% 100%, rgba(245, 158, 11, 0.28), transparent 52%),
+    radial-gradient(ellipse 50% 40% at 18% 8%, rgba(250, 204, 21, 0.12), transparent 45%),
+    linear-gradient(172deg, #0c0a09 0%, #1c1917 45%, #422006 100%);
+}
+
+.ecs-bee-comb {
+  position: absolute;
+  inset: -8%;
+  opacity: 0.09;
+  pointer-events: none;
+  background-image: repeating-linear-gradient(
+      60deg,
+      rgba(251, 191, 36, 0.22) 0 2px,
+      transparent 2px 18px
+    ),
+    repeating-linear-gradient(-60deg, rgba(120, 53, 15, 0.12) 0 2px, transparent 2px 18px);
+  mask-image: radial-gradient(ellipse 88% 70% at 50% 40%, black, transparent 78%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='bee'] .ecs-bee-comb {
+  opacity: 0.12;
+}
+
+.ecs-bee-nectar-glow {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  width: min(88vmin, 640px);
+  height: min(48vmin, 380px);
+  transform: translate(-50%, -50%);
+  border-radius: 55% 45% 52% 48% / 48% 52% 48% 52%;
+  pointer-events: none;
+  opacity: 0.18;
+  filter: blur(46px);
+  background: radial-gradient(ellipse at center, rgba(253, 224, 71, 0.55), transparent 65%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='bee'] .ecs-bee-nectar-glow {
   opacity: 0.14;
+  background: radial-gradient(ellipse at center, rgba(245, 158, 11, 0.4), transparent 62%);
+}
+
+html[data-ecs-palette='bee'] .ecs-theme-shell {
+  font-family: 'Trebuchet MS', 'Segoe UI', 'Verdana', sans-serif;
+}
+
+html[data-ecs-palette='bee'] .ecs-theme-shell input,
+html[data-ecs-palette='bee'] .ecs-theme-shell select,
+html[data-ecs-palette='bee'] .ecs-theme-shell textarea {
+  border-radius: 0.85rem;
+  border-color: rgba(245, 158, 11, 0.55);
+  background: rgba(255, 251, 235, 0.92);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='bee'] .ecs-theme-shell input,
+html[data-ecs-tone='dark'][data-ecs-palette='bee'] .ecs-theme-shell select,
+html[data-ecs-tone='dark'][data-ecs-palette='bee'] .ecs-theme-shell textarea {
+  border-color: rgba(251, 191, 36, 0.45);
+  background: rgba(24, 24, 27, 0.88);
+  color: #fef3c7;
+}
+
+html[data-ecs-palette='bee'] .ecs-theme-shell input:focus,
+html[data-ecs-palette='bee'] .ecs-theme-shell select:focus,
+html[data-ecs-palette='bee'] .ecs-theme-shell textarea:focus {
+  outline: none;
+  border-color: rgba(217, 119, 6, 0.85);
+  box-shadow: 0 0 0 2px rgba(251, 191, 36, 0.25), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+html[data-ecs-palette='bee'] .ecs-aero-login-shell {
+  background:
+    radial-gradient(ellipse 90% 70% at 50% 0%, rgba(254, 243, 199, 0.85), transparent 55%),
+    linear-gradient(168deg, #fffbeb 0%, #fde68a 55%, #fcd34d 100%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='bee'] .ecs-aero-login-shell {
+  background:
+    radial-gradient(ellipse 88% 65% at 50% 8%, rgba(120, 53, 15, 0.55), transparent 50%),
+    linear-gradient(168deg, #0c0a09 0%, #292524 55%, #422006 100%);
 }
 
 /* Palette-specific component feel */
@@ -805,13 +1402,13 @@ html[data-ecs-tone='dark'][data-ecs-palette='wii'] .ecs-theme-shell textarea {
   background: rgba(51, 65, 85, 0.75);
 }
 
-html[data-ecs-palette='xmb'] .ecs-theme-shell {
+html[data-ecs-palette='ps3'] .ecs-theme-shell {
   font-family: 'Helvetica Neue', 'Arial', 'Segoe UI', sans-serif;
 }
 
-html[data-ecs-palette='xmb'] .ecs-theme-shell input,
-html[data-ecs-palette='xmb'] .ecs-theme-shell select,
-html[data-ecs-palette='xmb'] .ecs-theme-shell textarea {
+html[data-ecs-palette='ps3'] .ecs-theme-shell input,
+html[data-ecs-palette='ps3'] .ecs-theme-shell select,
+html[data-ecs-palette='ps3'] .ecs-theme-shell textarea {
   border-radius: 0.45rem;
   border-color: rgba(71, 85, 105, 0.85);
   background: rgba(15, 23, 42, 0.86);
@@ -819,9 +1416,9 @@ html[data-ecs-palette='xmb'] .ecs-theme-shell textarea {
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
 
-html[data-ecs-palette='xmb'] .ecs-theme-shell input:focus,
-html[data-ecs-palette='xmb'] .ecs-theme-shell select:focus,
-html[data-ecs-palette='xmb'] .ecs-theme-shell textarea:focus {
+html[data-ecs-palette='ps3'] .ecs-theme-shell input:focus,
+html[data-ecs-palette='ps3'] .ecs-theme-shell select:focus,
+html[data-ecs-palette='ps3'] .ecs-theme-shell textarea:focus {
   outline: none;
   border-color: rgba(56, 189, 248, 0.75);
   box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.08);
@@ -879,13 +1476,15 @@ html[data-ecs-tone='dark'][data-ecs-palette='3ds'] .ecs-theme-shell textarea {
 
 html[data-ecs-palette='cube'] .ecs-aero-login-shell {
   background:
-    radial-gradient(ellipse 88% 72% at 12% 18%, rgba(191, 219, 254, 0.52), transparent 52%),
-    linear-gradient(165deg, #e2e8f0 0%, #cbd5e1 45%, #dbeafe 100%);
+    radial-gradient(ellipse 88% 72% at 12% 18%, rgba(199, 210, 254, 0.5), transparent 52%),
+    radial-gradient(ellipse 60% 50% at 92% 88%, rgba(254, 215, 170, 0.35), transparent 48%),
+    linear-gradient(165deg, #e2e8f0 0%, #c7d2fe 45%, #e0e7ff 100%);
 }
 
 html[data-ecs-tone='dark'][data-ecs-palette='cube'] .ecs-aero-login-shell {
   background:
-    radial-gradient(ellipse 85% 68% at 10% 14%, rgba(129, 140, 248, 0.3), transparent 54%),
+    radial-gradient(ellipse 85% 68% at 10% 14%, rgba(99, 102, 241, 0.32), transparent 54%),
+    radial-gradient(ellipse 55% 45% at 92% 82%, rgba(234, 88, 12, 0.12), transparent 48%),
     linear-gradient(168deg, #020617 0%, #0f172a 100%);
 }
 
@@ -897,15 +1496,17 @@ html[data-ecs-tone='dark'][data-ecs-palette='cube'] .ecs-aero-login-shell {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 88% 65% at 12% 16%, rgba(103, 232, 249, 0.28), transparent 52%),
-    radial-gradient(ellipse 70% 52% at 88% 84%, rgba(125, 211, 252, 0.24), transparent 52%),
-    linear-gradient(168deg, #ecfeff 0%, #dbeafe 50%, #cffafe 100%);
+    radial-gradient(ellipse 98% 78% at 50% 108%, rgba(255, 255, 255, 0.92), rgba(224, 247, 250, 0.55) 36%, transparent 58%),
+    radial-gradient(ellipse 58% 48% at 12% 22%, rgba(251, 191, 36, 0.22), transparent 52%),
+    radial-gradient(ellipse 52% 42% at 92% 18%, rgba(249, 168, 212, 0.18), transparent 48%),
+    linear-gradient(198deg, #fef9c3 0%, #a5f3fc 32%, #22d3ee 62%, #0284c7 100%);
 }
 
 html[data-ecs-tone='dark'][data-ecs-palette='wiiu'] .ecs-wiiu-backdrop {
   background:
-    radial-gradient(ellipse 82% 62% at 12% 14%, rgba(6, 182, 212, 0.24), transparent 55%),
-    linear-gradient(170deg, #031525 0%, #082f49 50%, #111827 100%);
+    radial-gradient(ellipse 92% 70% at 50% 100%, rgba(6, 182, 212, 0.42), transparent 54%),
+    radial-gradient(ellipse 70% 52% at 18% 12%, rgba(251, 146, 60, 0.1), transparent 48%),
+    linear-gradient(198deg, #020617 0%, #0c4a6e 38%, #082f49 100%);
 }
 
 .ecs-wiiu-tile-grid {
@@ -938,15 +1539,16 @@ html[data-ecs-tone='dark'][data-ecs-palette='wiiu'] .ecs-wiiu-backdrop {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(circle at 12% 14%, rgba(251, 113, 133, 0.24), transparent 40%),
-    radial-gradient(circle at 88% 82%, rgba(127, 29, 29, 0.22), transparent 44%),
-    linear-gradient(180deg, #ffe4e6 0%, #fecaca 50%, #fca5a5 100%);
+    linear-gradient(180deg, #fecdd3 0%, #fecdd3 48%, #881337 48%, #881337 52%, #4c0519 52%, #18181b 100%),
+    radial-gradient(ellipse 90% 45% at 50% 22%, rgba(255, 255, 255, 0.35), transparent 55%),
+    radial-gradient(ellipse 80% 50% at 50% 78%, rgba(244, 63, 94, 0.25), transparent 55%);
 }
 
 html[data-ecs-tone='dark'][data-ecs-palette='3ds'] .ecs-3ds-backdrop {
   background:
-    radial-gradient(circle at 14% 16%, rgba(244, 63, 94, 0.3), transparent 42%),
-    linear-gradient(180deg, #450a0a 0%, #18181b 48%, #7f1d1d 100%);
+    linear-gradient(180deg, #3f0d1a 0%, #3f0d1a 46%, #0a0a0a 46%, #0a0a0a 54%, #450a0a 54%, #020617 100%),
+    radial-gradient(ellipse 85% 40% at 50% 20%, rgba(251, 113, 133, 0.2), transparent 50%),
+    radial-gradient(ellipse 90% 55% at 50% 82%, rgba(190, 18, 60, 0.35), transparent 55%);
 }
 
 .ecs-3ds-dot-grid {
@@ -976,18 +1578,19 @@ html[data-ecs-tone='dark'][data-ecs-palette='3ds'] .ecs-3ds-backdrop {
 
 html[data-ecs-tone='light'][data-ecs-palette='sunset'] .ecs-y2k-space {
   background:
-    radial-gradient(circle at 20% 30%, rgba(253, 224, 71, 0.35), transparent 42%),
-    radial-gradient(circle at 75% 65%, rgba(244, 114, 182, 0.28), transparent 48%),
-    linear-gradient(175deg, #fffbeb 0%, #fbcfe8 40%, #cffafe 100%);
+    radial-gradient(circle at 15% 20%, rgba(253, 224, 71, 0.55), transparent 38%),
+    radial-gradient(circle at 85% 30%, rgba(244, 114, 182, 0.45), transparent 40%),
+    radial-gradient(circle at 50% 85%, rgba(56, 189, 248, 0.35), transparent 45%),
+    linear-gradient(168deg, #fff7ed 0%, #fbcfe8 35%, #e879f9 62%, #22d3ee 100%);
 }
 
 html[data-ecs-tone='dark'][data-ecs-palette='sunset'] .ecs-y2k-space {
   background:
-    radial-gradient(1.5px 1.5px at 12% 18%, rgba(255, 255, 255, 0.65), transparent),
-    radial-gradient(1.5px 1.5px at 72% 42%, rgba(255, 255, 255, 0.45), transparent),
-    radial-gradient(1.5px 1.5px at 38% 76%, rgba(255, 255, 255, 0.55), transparent),
-    radial-gradient(ellipse 100% 70% at 50% -10%, rgba(192, 38, 211, 0.28), transparent 55%),
-    linear-gradient(175deg, #060010 0%, #1a0a2e 45%, #134e4a 92%);
+    radial-gradient(1.5px 1.5px at 12% 18%, rgba(255, 255, 255, 0.75), transparent),
+    radial-gradient(1.5px 1.5px at 72% 42%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(1.5px 1.5px at 38% 76%, rgba(255, 255, 255, 0.65), transparent),
+    radial-gradient(ellipse 100% 70% at 50% -10%, rgba(217, 70, 239, 0.45), transparent 55%),
+    linear-gradient(172deg, #1a0033 0%, #701a75 38%, #0e7490 88%);
   background-size:
     120px 120px,
     140px 140px,
@@ -1057,41 +1660,17 @@ html[data-ecs-tone='light'][data-ecs-palette='sunset'] .ecs-y2k-grid-floor {
   gap: 1rem;
 }
 
-.ecs-workspace-flow > [data-region='header'] {
-  order: 0;
-}
-.ecs-workspace-flow > [data-region='status'] {
-  order: 1;
-}
-.ecs-workspace-flow > [data-region='grid'] {
-  order: 2;
-}
+/* Vertical order for header / status / grid comes from inline `order` (React `workspaceFlow`). */
 
 /* Win98 status bar is pinned at the bottom of the flow */
 .ecs-workspace-flow > [data-region='statusbar'] {
   order: 99;
 }
 
-/* XMB places quick info at the very top, above the title bar */
-html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-workspace-flow > [data-region='status'] {
-  order: 0;
-}
-html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-workspace-flow > [data-region='header'] {
-  order: 1;
-}
+/* Region vertical order is driven from React (`workspaceFlow`) so it stays consistent with inline `order`. */
 
-/* Y2K floats the status row above the title for a magazine-feed feel */
-html[data-ecs-layout='themed'][data-ecs-palette='sunset'] .ecs-workspace-flow > [data-region='status'] {
-  order: 0;
-  justify-content: center;
-}
-html[data-ecs-layout='themed'][data-ecs-palette='sunset'] .ecs-workspace-flow > [data-region='header'] {
-  order: 1;
-}
-
-/* Wii U pins the status row to the bottom like a system bar */
+/* Wii U: status strip styling when it is last in flow (header → grid → status) */
 html[data-ecs-layout='themed'][data-ecs-palette='wiiu'] .ecs-workspace-flow > [data-region='status'] {
-  order: 3;
   margin-top: 0.5rem;
   padding: 0.5rem 0.75rem;
   border-top: 1px solid rgba(125, 211, 252, 0.45);
@@ -1106,6 +1685,26 @@ html[data-ecs-tone='dark'][data-ecs-layout='themed'][data-ecs-palette='wiiu'] .e
   border-bottom-color: rgba(34, 211, 238, 0.2);
 }
 
+html[data-ecs-layout='themed'][data-ecs-palette='sunset'] .ecs-workspace-flow > [data-region='status'] {
+  justify-content: center;
+}
+
+/* Bee: status strip as warm “wax” bar when it trails the grid */
+html[data-ecs-layout='themed'][data-ecs-palette='bee'] .ecs-workspace-flow > [data-region='status'] {
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid rgba(251, 191, 36, 0.55);
+  border-bottom: 1px solid rgba(180, 83, 9, 0.25);
+  background: rgba(255, 251, 235, 0.72);
+  backdrop-filter: blur(8px);
+  border-radius: 9999px;
+}
+html[data-ecs-tone='dark'][data-ecs-layout='themed'][data-ecs-palette='bee'] .ecs-workspace-flow > [data-region='status'] {
+  background: rgba(12, 10, 9, 0.65);
+  border-top-color: rgba(245, 158, 11, 0.4);
+  border-bottom-color: rgba(120, 53, 15, 0.35);
+}
+
 /* Default workspace grid: sidebar left, single column on small screens */
 .ecs-workspace-grid {
   display: grid;
@@ -1113,14 +1712,29 @@ html[data-ecs-tone='dark'][data-ecs-layout='themed'][data-ecs-palette='wiiu'] .e
   grid-template-columns: 1fr;
 }
 
+.ecs-workspace-grid > main {
+  min-width: 0;
+}
+
 @media (min-width: 1024px) {
   .ecs-workspace-grid {
     grid-template-columns: 300px 1fr;
   }
 
-  /* Aero (Vista) widens the navigation pane to feel like Windows Explorer's nav */
+  /* Default themed: slightly tighter nav column than the global baseline */
+  html[data-ecs-layout='themed'][data-ecs-palette='default'] .ecs-workspace-grid {
+    grid-template-columns: 260px 1fr;
+  }
+
+  /* Aero: Explorer content left, wide nav column on the right */
   html[data-ecs-layout='themed'][data-ecs-palette='violet'] .ecs-workspace-grid {
-    grid-template-columns: 340px 1fr;
+    grid-template-columns: 1fr 340px;
+  }
+  html[data-ecs-layout='themed'][data-ecs-palette='violet'] .ecs-workspace-grid > aside {
+    order: 2;
+  }
+  html[data-ecs-layout='themed'][data-ecs-palette='violet'] .ecs-workspace-grid > main {
+    order: 1;
   }
 
   /* Win98 puts the explorer pane on the right (Windows Explorer details pane) */
@@ -1145,16 +1759,48 @@ html[data-ecs-tone='dark'][data-ecs-layout='themed'][data-ecs-palette='wiiu'] .e
     order: 1;
   }
 
-  /* GameCube BIOS: narrow side rail + centered detail card area */
+  /* GameCube BIOS: main stage left, narrow indigo rail on the right */
   html[data-ecs-layout='themed'][data-ecs-palette='cube'] .ecs-workspace-grid {
-    grid-template-columns: 240px 1fr;
+    grid-template-columns: 1fr minmax(200px, 16vw);
+  }
+  html[data-ecs-layout='themed'][data-ecs-palette='cube'] .ecs-workspace-grid > aside {
+    order: 2;
+  }
+  html[data-ecs-layout='themed'][data-ecs-palette='cube'] .ecs-workspace-grid > main {
+    order: 1;
   }
 
-  /* Wii: top channel rail full-width, then content */
+  /* Wii + 3DS: full-width stacked panes */
   html[data-ecs-layout='themed'][data-ecs-palette='wii'] .ecs-workspace-grid,
-  html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-workspace-grid,
   html[data-ecs-layout='themed'][data-ecs-palette='3ds'] .ecs-workspace-grid {
     grid-template-columns: 1fr;
+  }
+
+  /* PS3 XMB: wide canvas + category column */
+  html[data-ecs-layout='themed'][data-ecs-palette='ps3'] .ecs-workspace-grid {
+    grid-template-columns: 1fr minmax(260px, 18vw);
+  }
+  html[data-ecs-layout='themed'][data-ecs-palette='ps3'] .ecs-workspace-grid > aside {
+    order: 2;
+  }
+  html[data-ecs-layout='themed'][data-ecs-palette='ps3'] .ecs-workspace-grid > main {
+    order: 1;
+  }
+
+  /* Xbox 360 NXE: hero main + blade column */
+  html[data-ecs-layout='themed'][data-ecs-palette='xbox360'] .ecs-workspace-grid {
+    grid-template-columns: 1fr 300px;
+  }
+  html[data-ecs-layout='themed'][data-ecs-palette='xbox360'] .ecs-workspace-grid > aside {
+    order: 2;
+  }
+  html[data-ecs-layout='themed'][data-ecs-palette='xbox360'] .ecs-workspace-grid > main {
+    order: 1;
+  }
+
+  /* Bee: wide “hive” column on the left */
+  html[data-ecs-layout='themed'][data-ecs-palette='bee'] .ecs-workspace-grid {
+    grid-template-columns: minmax(280px, 28vw) 1fr;
   }
 
   /* Wii U: large content on the left, dashboard column on the right */
@@ -1171,7 +1817,6 @@ html[data-ecs-tone='dark'][data-ecs-layout='themed'][data-ecs-palette='wiiu'] .e
 
 /* Disable sticky sidebar for top/full-width sidebar layouts (themed only) */
 html[data-ecs-layout='themed'][data-ecs-palette='wii'] .ecs-workspace-grid > aside,
-html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-workspace-grid > aside,
 html[data-ecs-layout='themed'][data-ecs-palette='3ds'] .ecs-workspace-grid > aside,
 html[data-ecs-layout='themed'][data-ecs-palette='wiiu'] .ecs-workspace-grid > aside,
 html[data-ecs-layout='themed'][data-ecs-palette='teal'] .ecs-workspace-grid > aside,
@@ -1220,8 +1865,8 @@ html[data-ecs-layout='themed'][data-ecs-palette='wii'] .ecs-character-list .ecs-
   height: 56px !important;
 }
 
-/* ----- XMB character row: horizontal scrolling category bar ----- */
-html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-character-list {
+/* ----- PS3 XMB character row: horizontal scrolling category bar ----- */
+html[data-ecs-layout='themed'][data-ecs-palette='ps3'] .ecs-character-list {
   display: flex;
   gap: 0.5rem;
   overflow-x: auto;
@@ -1230,12 +1875,12 @@ html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-character-list {
   scroll-snap-type: x mandatory;
 }
 
-html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-character-list > li {
+html[data-ecs-layout='themed'][data-ecs-palette='ps3'] .ecs-character-list > li {
   flex: 0 0 auto;
   scroll-snap-align: start;
 }
 
-html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-character-list > li > button {
+html[data-ecs-layout='themed'][data-ecs-palette='ps3'] .ecs-character-list > li > button {
   flex-direction: column;
   align-items: center;
   text-align: center;
@@ -1249,9 +1894,47 @@ html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-character-list > li 
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
-html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-character-list .ecs-portrait-hex {
+html[data-ecs-layout='themed'][data-ecs-palette='ps3'] .ecs-character-list .ecs-portrait-hex {
   clip-path: none;
   border-radius: 0.5rem;
+  width: 56px !important;
+  height: 56px !important;
+}
+
+/* ----- Xbox 360 NXE: same horizontal “blade” strip, Xbox green chrome ----- */
+html[data-ecs-layout='themed'][data-ecs-palette='xbox360'] .ecs-character-list {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+  margin-top: 0.85rem;
+  scroll-snap-type: x mandatory;
+}
+
+html[data-ecs-layout='themed'][data-ecs-palette='xbox360'] .ecs-character-list > li {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+
+html[data-ecs-layout='themed'][data-ecs-palette='xbox360'] .ecs-character-list > li > button {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  min-width: 130px;
+  gap: 0.4rem;
+  padding: 0.6rem 0.5rem;
+  border-radius: 0.35rem;
+  background: linear-gradient(180deg, rgba(24, 24, 27, 0.82), rgba(9, 9, 11, 0.92));
+  border: 1px solid rgba(63, 63, 70, 0.75);
+  color: #fafafa;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 0 0 1px rgba(74, 222, 128, 0.12);
+}
+
+html[data-ecs-layout='themed'][data-ecs-palette='xbox360'] .ecs-character-list .ecs-portrait-hex {
+  clip-path: none;
+  border-radius: 0.35rem;
   width: 56px !important;
   height: 56px !important;
 }
@@ -1379,6 +2062,38 @@ html[data-ecs-tone='dark'][data-ecs-layout='themed'][data-ecs-palette='cube'] .e
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
+/* ----- Bee: pill “cells” in the wide hive column ----- */
+html[data-ecs-layout='themed'][data-ecs-palette='bee'] .ecs-character-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+}
+
+html[data-ecs-layout='themed'][data-ecs-palette='bee'] .ecs-character-list > li > button {
+  border-radius: 9999px;
+  border: 2px solid rgba(251, 191, 36, 0.65);
+  background: linear-gradient(135deg, rgba(255, 251, 235, 0.98), rgba(254, 243, 199, 0.92));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 6px 16px rgba(180, 83, 9, 0.12);
+}
+
+html[data-ecs-tone='dark'][data-ecs-layout='themed'][data-ecs-palette='bee'] .ecs-character-list > li > button {
+  border-color: rgba(245, 158, 11, 0.45);
+  background: linear-gradient(135deg, rgba(39, 39, 42, 0.94), rgba(12, 10, 9, 0.98));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    0 6px 16px rgba(0, 0, 0, 0.35);
+}
+
+html[data-ecs-layout='themed'][data-ecs-palette='bee'] .ecs-character-list .ecs-portrait-hex {
+  clip-path: none;
+  border-radius: 9999px;
+  width: 52px !important;
+  height: 52px !important;
+}
+
 /* ----- Y2K text glow accent for headings ----- */
 .ecs-y2k-text-glow {
   background: linear-gradient(120deg, #f472b6 0%, #c084fc 45%, #22d3ee 100%);
@@ -1406,7 +2121,8 @@ html[data-ecs-tone='dark'][data-ecs-palette='sunset'] .ecs-y2k-text-glow {
 /* Neutralize default vertical spacing when character list is laid out as grid/flex */
 html[data-ecs-layout='themed'][data-ecs-palette='wii'] .ecs-character-list > * + *,
 html[data-ecs-layout='themed'][data-ecs-palette='wiiu'] .ecs-character-list > * + *,
-html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-character-list > * + * {
+html[data-ecs-layout='themed'][data-ecs-palette='ps3'] .ecs-character-list > * + *,
+html[data-ecs-layout='themed'][data-ecs-palette='xbox360'] .ecs-character-list > * + * {
   margin-top: 0;
 }
 
@@ -1466,50 +2182,21 @@ html[data-ecs-layout='themed'][data-ecs-palette='3ds'] .ecs-workspace-grid > mai
 }
 
 /* ============================================================
-   Settings tooltip popover
+   Settings panel form fields (inline help text pattern)
    ============================================================ */
 
-.ecs-tooltip-trigger {
-  position: relative;
+.ecs-settings-field select,
+.ecs-settings-field input,
+.ecs-settings-field textarea {
+  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 
-.ecs-tooltip-bubble {
-  position: absolute;
-  bottom: calc(100% + 8px);
-  left: 50%;
-  width: 220px;
-  max-width: 60vw;
-  padding: 0.55rem 0.7rem;
-  background: rgba(15, 23, 42, 0.96);
-  color: #f8fafc;
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 1.4;
-  border-radius: 0.45rem;
-  pointer-events: none;
-  opacity: 0;
-  transform: translateX(-50%) translateY(4px);
-  transition: opacity 0.12s ease, transform 0.12s ease;
-  z-index: 60000;
-  white-space: normal;
-  text-align: left;
-  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.05);
-}
-
-.ecs-tooltip-bubble::after {
-  content: '';
-  position: absolute;
-  top: 100%;
-  left: 50%;
-  transform: translateX(-50%);
-  border: 5px solid transparent;
-  border-top-color: rgba(15, 23, 42, 0.96);
-}
-
-.ecs-tooltip-trigger:hover .ecs-tooltip-bubble,
-.ecs-tooltip-trigger:focus-visible .ecs-tooltip-bubble {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
+.ecs-settings-field select:focus-visible,
+.ecs-settings-field input:focus-visible,
+.ecs-settings-field textarea:focus-visible {
+  outline: none;
+  border-color: rgb(100 116 139);
+  box-shadow: 0 0 0 3px rgba(100, 116, 139, 0.25);
 }
 
 /* ============================================================
@@ -1600,12 +2287,9 @@ html[data-ecs-tone='dark'][data-ecs-layout='themed'][data-ecs-palette='sunset'] 
 
   .ecs-xmb-wave-layer,
   .ecs-xmb-login-sheen,
+  .ecs-nxe-blade-sweep,
   .ecs-cube-ghost-cube {
     animation: none !important;
-  }
-
-  .ecs-tooltip-bubble {
-    transition: none;
   }
 }
 
@@ -1617,4 +2301,179 @@ html[data-ecs-tone='dark'][data-ecs-layout='themed'][data-ecs-palette='sunset'] 
   .ecs-interactive-strong {
     @apply transition-all duration-200 ease-out;
   }
+}
+
+/* ----------------------------------------------------------------- */
+/*  Per-theme readability overrides for muted text                    */
+/*                                                                    */
+/*  Tailwind utility classes like `text-slate-500` and                 */
+/*  `dark:text-slate-400` are used everywhere for hint text. Most      */
+/*  themes paint cards in non-slate colors, so these defaults vanish   */
+/*  on themed backgrounds. Each scope below remaps the muted classes   */
+/*  to the closest visible color from the active palette, while        */
+/*  leaving headings and primary text alone.                           */
+/*                                                                    */
+/*  Modal portals render outside `.ecs-theme-shell`, so the overrides  */
+/*  intentionally do NOT affect Settings or Dev Tools dialogs.         */
+/* ----------------------------------------------------------------- */
+
+/* AERO (violet) */
+html[data-ecs-palette='violet'] .ecs-theme-shell .text-slate-500 {
+  color: rgba(15, 76, 129, 0.85);
+}
+html[data-ecs-palette='violet'] .ecs-theme-shell .text-slate-400 {
+  color: rgba(15, 76, 129, 0.7);
+}
+html[data-ecs-palette='violet'] .ecs-theme-shell .text-slate-700 {
+  color: #082f49;
+}
+html[data-ecs-palette='violet'].dark .ecs-theme-shell .text-slate-500,
+html[data-ecs-palette='violet'].dark .ecs-theme-shell .text-slate-400 {
+  color: rgba(165, 243, 252, 0.85);
+}
+html[data-ecs-palette='violet'].dark .ecs-theme-shell .text-slate-700,
+html[data-ecs-palette='violet'].dark .ecs-theme-shell .text-slate-200 {
+  color: #cffafe;
+}
+
+/* WIN98 (teal) */
+html[data-ecs-palette='teal'] .ecs-theme-shell .text-slate-500,
+html[data-ecs-palette='teal'] .ecs-theme-shell .text-slate-400 {
+  color: #2f2f2f;
+}
+html[data-ecs-palette='teal'] .ecs-theme-shell .text-slate-700 {
+  color: #000080;
+}
+html[data-ecs-palette='teal'].dark .ecs-theme-shell .text-slate-500,
+html[data-ecs-palette='teal'].dark .ecs-theme-shell .text-slate-400 {
+  color: #d4d0c8;
+}
+html[data-ecs-palette='teal'].dark .ecs-theme-shell .text-slate-700,
+html[data-ecs-palette='teal'].dark .ecs-theme-shell .text-slate-200 {
+  color: #ffffff;
+}
+
+/* Y2K (sunset) */
+html[data-ecs-palette='sunset'] .ecs-theme-shell .text-slate-500 {
+  color: rgba(49, 46, 129, 0.85);
+}
+html[data-ecs-palette='sunset'] .ecs-theme-shell .text-slate-400 {
+  color: rgba(49, 46, 129, 0.7);
+}
+html[data-ecs-palette='sunset'] .ecs-theme-shell .text-slate-700 {
+  color: #1e1b4b;
+}
+html[data-ecs-palette='sunset'].dark .ecs-theme-shell .text-slate-500,
+html[data-ecs-palette='sunset'].dark .ecs-theme-shell .text-slate-400 {
+  color: rgba(245, 208, 254, 0.88);
+}
+html[data-ecs-palette='sunset'].dark .ecs-theme-shell .text-slate-700,
+html[data-ecs-palette='sunset'].dark .ecs-theme-shell .text-slate-200 {
+  color: #fae8ff;
+}
+
+/* WII */
+html[data-ecs-palette='wii'] .ecs-theme-shell .text-slate-500,
+html[data-ecs-palette='wii'] .ecs-theme-shell .text-slate-400 {
+  color: #4b5563;
+}
+html[data-ecs-palette='wii'] .ecs-theme-shell .text-slate-700 {
+  color: #111827;
+}
+html[data-ecs-palette='wii'].dark .ecs-theme-shell .text-slate-500,
+html[data-ecs-palette='wii'].dark .ecs-theme-shell .text-slate-400 {
+  color: #d1d5db;
+}
+html[data-ecs-palette='wii'].dark .ecs-theme-shell .text-slate-700,
+html[data-ecs-palette='wii'].dark .ecs-theme-shell .text-slate-200 {
+  color: #f9fafb;
+}
+
+/* PS3 XMB (dark, cyan readouts) */
+html[data-ecs-palette='ps3'] .ecs-theme-shell .text-slate-500,
+html[data-ecs-palette='ps3'] .ecs-theme-shell .text-slate-400 {
+  color: rgba(186, 230, 253, 0.78);
+}
+html[data-ecs-palette='ps3'] .ecs-theme-shell .text-slate-700,
+html[data-ecs-palette='ps3'] .ecs-theme-shell .text-slate-200 {
+  color: #f1f5f9;
+}
+
+/* Xbox 360 NXE (dark, lime readouts) */
+html[data-ecs-palette='xbox360'] .ecs-theme-shell .text-slate-500,
+html[data-ecs-palette='xbox360'] .ecs-theme-shell .text-slate-400 {
+  color: rgba(217, 249, 157, 0.78);
+}
+html[data-ecs-palette='xbox360'] .ecs-theme-shell .text-slate-700,
+html[data-ecs-palette='xbox360'] .ecs-theme-shell .text-slate-200 {
+  color: #fafafa;
+}
+
+/* CUBE */
+html[data-ecs-palette='cube'] .ecs-theme-shell .text-slate-500 {
+  color: rgba(49, 46, 129, 0.85);
+}
+html[data-ecs-palette='cube'] .ecs-theme-shell .text-slate-400 {
+  color: rgba(49, 46, 129, 0.7);
+}
+html[data-ecs-palette='cube'] .ecs-theme-shell .text-slate-700 {
+  color: #1e1b4b;
+}
+html[data-ecs-palette='cube'].dark .ecs-theme-shell .text-slate-500,
+html[data-ecs-palette='cube'].dark .ecs-theme-shell .text-slate-400 {
+  color: rgba(199, 210, 254, 0.85);
+}
+html[data-ecs-palette='cube'].dark .ecs-theme-shell .text-slate-700,
+html[data-ecs-palette='cube'].dark .ecs-theme-shell .text-slate-200 {
+  color: #e0e7ff;
+}
+
+/* WII U */
+html[data-ecs-palette='wiiu'] .ecs-theme-shell .text-slate-500,
+html[data-ecs-palette='wiiu'] .ecs-theme-shell .text-slate-400 {
+  color: rgba(14, 116, 144, 0.85);
+}
+html[data-ecs-palette='wiiu'] .ecs-theme-shell .text-slate-700 {
+  color: #083344;
+}
+html[data-ecs-palette='wiiu'].dark .ecs-theme-shell .text-slate-500,
+html[data-ecs-palette='wiiu'].dark .ecs-theme-shell .text-slate-400 {
+  color: rgba(165, 243, 252, 0.85);
+}
+html[data-ecs-palette='wiiu'].dark .ecs-theme-shell .text-slate-700,
+html[data-ecs-palette='wiiu'].dark .ecs-theme-shell .text-slate-200 {
+  color: #cffafe;
+}
+
+/* 3DS */
+html[data-ecs-palette='3ds'] .ecs-theme-shell .text-slate-500,
+html[data-ecs-palette='3ds'] .ecs-theme-shell .text-slate-400 {
+  color: rgba(159, 18, 57, 0.85);
+}
+html[data-ecs-palette='3ds'] .ecs-theme-shell .text-slate-700 {
+  color: #4c0519;
+}
+html[data-ecs-palette='3ds'].dark .ecs-theme-shell .text-slate-500,
+html[data-ecs-palette='3ds'].dark .ecs-theme-shell .text-slate-400 {
+  color: rgba(254, 205, 211, 0.85);
+}
+html[data-ecs-palette='3ds'].dark .ecs-theme-shell .text-slate-700,
+html[data-ecs-palette='3ds'].dark .ecs-theme-shell .text-slate-200 {
+  color: #ffe4e6;
+}
+
+/* Product wordmark — editorial serif, not generic rounded SaaS */
+.ecs-product-wordmark {
+  font-family: ui-serif, Georgia, Cambria, 'Times New Roman', Times, serif;
+  font-weight: 700;
+  letter-spacing: -0.03em;
+  line-height: 1.08;
+}
+
+.ecs-product-tagline {
+  font-family: ui-sans-serif, system-ui, sans-serif;
+}
+
+html[data-ecs-palette='default'] .ecs-theme-shell {
+  font-feature-settings: 'kern' 1, 'liga' 1;
 }

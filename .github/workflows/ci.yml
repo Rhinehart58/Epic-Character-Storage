@@ -1,0 +1,27 @@
+# Continuous integration: catch TypeScript breakage before merge.
+# Lint is run locally (`npm run lint`); CI uses `verify` until ESLint is clean repo-wide.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck (main + renderer)
+        run: npm run verify

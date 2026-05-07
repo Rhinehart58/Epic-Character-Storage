@@ -45,9 +45,9 @@ module.exports = {
           '0%, 100%': { transform: 'rotate(-8deg) translateX(-4%)' },
           '50%': { transform: 'rotate(-6deg) translateX(4%)' }
         },
-        ecsXmbWave: {
-          '0%': { backgroundPosition: '0% 40%' },
-          '100%': { backgroundPosition: '100% 60%' }
+        ecsNxeDrift: {
+          '0%': { backgroundPosition: '0% 50%' },
+          '100%': { backgroundPosition: '100% 50%' }
         },
         ecsWiiDrift: {
           '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
@@ -66,6 +66,7 @@ module.exports = {
         'ecs-aero-float': 'ecsAeroFloat 22s ease-in-out infinite',
         'ecs-aero-ribbon': 'ecsAeroRibbon 28s ease-in-out infinite',
         'ecs-xmb-wave': 'ecsXmbWave 22s linear infinite',
+        'ecs-nxe-drift': 'ecsNxeDrift 26s linear infinite',
         'ecs-wii-drift': 'ecsWiiDrift 16s ease-in-out infinite',
         'ecs-cube-drift': 'ecsCubeDrift 18s ease-in-out infinite'
       }
