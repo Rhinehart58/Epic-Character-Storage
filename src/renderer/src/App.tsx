@@ -789,25 +789,31 @@ export default function App(): JSX.Element {
   const cardClass =
     visualStyle === 'parchment'
       ? 'ecs-shape-card ecs-shape-soft motion-safe:transition-shadow motion-safe:duration-300 motion-safe:hover:shadow-lg motion-safe:hover:ring-1 motion-safe:hover:ring-amber-400/25 dark:motion-safe:hover:ring-amber-500/20 border-amber-300/70 bg-amber-50/95 dark:border-amber-600/30 dark:bg-[#302519] dark:text-amber-50'
-      : 'ecs-shape-card ecs-shape-soft motion-safe:transition-shadow motion-safe:duration-300 motion-safe:hover:shadow-lg motion-safe:hover:ring-1 motion-safe:hover:ring-slate-300/60 dark:motion-safe:hover:ring-slate-600/50 border-slate-200/80 bg-white/95 backdrop-blur dark:border-slate-800 dark:bg-slate-900/95'
+      : 'ecs-shape-card ecs-shape-soft motion-safe:transition-shadow motion-safe:duration-300 motion-safe:hover:shadow-lg motion-safe:hover:ring-1 motion-safe:hover:ring-cyan-300/55 dark:motion-safe:hover:ring-teal-600/45 border-cyan-200/75 bg-white/88 shadow-aero-card backdrop-blur-md dark:border-teal-900/55 dark:bg-slate-900/88 dark:shadow-aero-card-dark'
   const scheme = {
     violet: {
-      grad: 'from-violet-600 via-indigo-600 to-fuchsia-600',
-      primary: 'bg-violet-600',
-      secondary: 'bg-indigo-600',
-      ring: 'ring-violet-400/70'
+      grad: 'from-sky-500 via-teal-500 to-lime-400',
+      primary:
+        'bg-gradient-to-b from-sky-400 to-sky-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] border border-sky-600/40',
+      secondary:
+        'bg-gradient-to-b from-teal-400 to-teal-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.38)] border border-teal-700/35',
+      ring: 'ring-sky-400/75'
     },
     teal: {
-      grad: 'from-teal-600 via-cyan-600 to-emerald-600',
-      primary: 'bg-teal-600',
-      secondary: 'bg-cyan-600',
-      ring: 'ring-teal-400/70'
+      grad: 'from-cyan-500 via-sky-500 to-emerald-400',
+      primary:
+        'bg-gradient-to-b from-cyan-400 to-cyan-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.42)] border border-cyan-700/45',
+      secondary:
+        'bg-gradient-to-b from-emerald-400 to-emerald-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] border border-emerald-800/35',
+      ring: 'ring-cyan-400/75'
     },
     sunset: {
-      grad: 'from-orange-600 via-rose-600 to-amber-600',
-      primary: 'bg-orange-600',
-      secondary: 'bg-rose-600',
-      ring: 'ring-orange-400/70'
+      grad: 'from-amber-400 via-orange-500 to-fuchsia-500',
+      primary:
+        'bg-gradient-to-b from-orange-400 to-orange-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.48)] border border-orange-700/40',
+      secondary:
+        'bg-gradient-to-b from-fuchsia-500 to-pink-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] border border-pink-800/35',
+      ring: 'ring-orange-400/75'
     }
   }[colorScheme]
 
@@ -906,22 +912,36 @@ export default function App(): JSX.Element {
 
   if (!isAuthed) {
     return (
-      <div className="min-h-screen bg-slate-100 px-4 py-6 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-        <div className="mx-auto grid min-h-[calc(100vh-3rem)] w-full max-w-6xl grid-rows-1 gap-4 rounded-3xl border border-slate-200 bg-white p-4 shadow-soft motion-safe:animate-ecs-fade-up dark:border-slate-800 dark:bg-slate-900 lg:grid-cols-[1.1fr_0.9fr]">
-          <section className={cn('flex min-h-0 flex-col rounded-2xl bg-gradient-to-br p-7 text-white', scheme.grad)}>
-            <div className="shrink-0">
-              <div className="text-xs font-semibold uppercase tracking-[0.25em] text-violet-100">
+      <div className="ecs-aero-login-shell min-h-screen px-4 py-6 text-slate-900 dark:text-slate-100">
+        <div className="mx-auto grid min-h-[calc(100vh-3rem)] w-full max-w-6xl grid-rows-1 gap-4 rounded-[2rem] border border-cyan-300/45 bg-white/40 p-4 shadow-aero-float backdrop-blur-xl motion-safe:animate-ecs-fade-up dark:border-teal-800/45 dark:bg-slate-950/45 lg:grid-cols-[1.1fr_0.9fr]">
+          <section
+            className={cn(
+              'ecs-shape-banner ecs-diagonal-strip relative flex min-h-0 flex-col overflow-hidden rounded-[1.75rem] bg-gradient-to-br p-7 text-white shadow-aero-float',
+              scheme.grad
+            )}
+          >
+            <div
+              className="pointer-events-none absolute -right-24 top-8 h-56 w-56 rounded-[58%_42%_55%_45%] bg-white/25 blur-2xl motion-safe:animate-ecs-aero-float"
+              aria-hidden
+            />
+            <div
+              className="pointer-events-none absolute -bottom-16 -left-12 h-48 w-72 rotate-12 rounded-[45%_55%_48%_52%] bg-lime-300/25 blur-2xl motion-safe:animate-ecs-aero-float"
+              style={{ animationDelay: '-7s' }}
+              aria-hidden
+            />
+            <div className="relative shrink-0">
+              <div className="text-xs font-semibold uppercase tracking-[0.25em] text-white/85 drop-shadow-md">
                 EPIC CHARACTER STORAGE
               </div>
-              <h1 className="mt-4 text-4xl font-bold leading-tight">Welcome back</h1>
-              <p className="mt-3 max-w-xl text-sm leading-relaxed text-violet-100">
+              <h1 className="mt-4 text-4xl font-bold leading-tight drop-shadow-md">Welcome back</h1>
+              <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/92 drop-shadow">
                 Build, organize, and run your campaign sheets in one place. Login is required each time you open the app.
               </p>
             </div>
-            <LoginUpdateLog className="mt-6 min-h-0 flex-1" />
+            <LoginUpdateLog className="relative mt-6 min-h-0 flex-1" />
           </section>
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-6 motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:90ms] dark:border-slate-700 dark:bg-slate-900">
+          <section className="ecs-aero-glass-panel rounded-[1.75rem] border border-white/70 bg-white/82 p-6 motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:90ms] dark:border-white/10 dark:bg-slate-900/82">
             <h2 className="text-2xl font-bold">Sign in</h2>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
               Use your account email and password.
@@ -936,7 +956,7 @@ export default function App(): JSX.Element {
                   className={cn(
                     'ecs-interactive rounded-lg px-3 py-1.5 text-xs font-semibold uppercase motion-safe:active:scale-[0.98]',
                     authMode === mode
-                      ? 'bg-violet-600 text-white'
+                      ? cn(scheme.primary, 'text-white')
                       : 'border border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800/60'
                   )}
                 >
@@ -961,7 +981,7 @@ export default function App(): JSX.Element {
                     className={cn(
                       'ecs-interactive rounded-lg px-3 py-1.5 text-xs font-semibold uppercase motion-safe:active:scale-[0.98]',
                       authMode === mode
-                        ? 'bg-violet-600 text-white'
+                        ? cn(scheme.primary, 'text-white')
                         : 'border border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800/60'
                     )}
                   >
@@ -1086,12 +1106,26 @@ export default function App(): JSX.Element {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden bg-slate-100 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
-      <div className={cn('pointer-events-none absolute -top-24 -right-16 h-72 w-72 rounded-full opacity-25 blur-3xl', scheme.primary)} />
-      <div className={cn('pointer-events-none absolute bottom-8 -left-20 h-64 w-64 rounded-full opacity-20 blur-3xl', scheme.secondary)} />
-      <div className="pointer-events-none absolute inset-0 ecs-grid-wash opacity-70" />
-      <div className="mx-auto max-w-7xl px-5 py-7">
-        <header className="ecs-shape-banner ecs-diagonal-strip relative mb-6 rounded-3xl border border-violet-200/80 bg-white p-5 shadow-sm motion-safe:animate-ecs-fade-up dark:border-slate-800 dark:bg-slate-900">
+    <div className="relative min-h-screen overflow-hidden text-slate-900 dark:text-slate-100">
+      <div className="pointer-events-none absolute inset-0 ecs-aero-scene" aria-hidden>
+        <div className="ecs-aero-sky" />
+        <div className="ecs-aero-ribbon motion-safe:animate-ecs-aero-ribbon" />
+        <div
+          className="ecs-aero-orb ecs-aero-orb--a motion-safe:animate-ecs-aero-float"
+          style={{ animationDelay: '-5s' }}
+        />
+        <div
+          className="ecs-aero-orb ecs-aero-orb--b motion-safe:animate-ecs-aero-float"
+          style={{ animationDelay: '-11s' }}
+        />
+        <div
+          className="ecs-aero-orb ecs-aero-orb--c motion-safe:animate-ecs-aero-float"
+          style={{ animationDelay: '-17s' }}
+        />
+        <div className="absolute inset-0 ecs-grid-wash opacity-80" />
+      </div>
+      <div className="relative mx-auto max-w-7xl px-5 py-7">
+        <header className="ecs-shape-banner ecs-diagonal-strip relative mb-6 rounded-[1.75rem] border border-cyan-300/55 bg-white/82 p-5 shadow-aero-float backdrop-blur-md motion-safe:animate-ecs-fade-up dark:border-teal-800/55 dark:bg-slate-900/78">
           <div className="relative z-[1] flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 className="text-2xl font-bold">Campaign Manager</h1>
@@ -1120,13 +1154,13 @@ export default function App(): JSX.Element {
         </header>
 
         <div className="mb-4 flex flex-wrap gap-2 motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:55ms]">
-          <div className="rounded-full border border-slate-300/80 bg-white/80 px-3 py-1 text-xs motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03] dark:border-slate-700 dark:bg-slate-900/60">
+          <div className="rounded-full border border-cyan-200/75 bg-white/85 px-3 py-1 text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03] dark:border-teal-800/70 dark:bg-slate-900/65 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
             Mode: <span className="font-semibold">{rulesMode === 'dnd' ? 'DnD' : 'TTRPG'}</span>
           </div>
-          <div className="rounded-full border border-slate-300/80 bg-white/80 px-3 py-1 text-xs motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03] dark:border-slate-700 dark:bg-slate-900/60">
+          <div className="rounded-full border border-cyan-200/75 bg-white/85 px-3 py-1 text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03] dark:border-teal-800/70 dark:bg-slate-900/65 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
             Characters: <span className="font-semibold">{characters.length}</span>
           </div>
-          <div className="rounded-full border border-slate-300/80 bg-white/80 px-3 py-1 text-xs motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03] dark:border-slate-700 dark:bg-slate-900/60">
+          <div className="rounded-full border border-cyan-200/75 bg-white/85 px-3 py-1 text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03] dark:border-teal-800/70 dark:bg-slate-900/65 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
             Campaign: <span className="font-semibold">{activeCampaign?.name ?? 'Personal'}</span>
           </div>
         </div>
@@ -1266,7 +1300,7 @@ export default function App(): JSX.Element {
                       className={cn(
                         'flex w-full gap-2 rounded-lg border px-2 py-2 text-left motion-safe:transition-[border-color,box-shadow,background-color] motion-safe:duration-200 motion-safe:hover:shadow-md motion-safe:hover:border-slate-300 dark:motion-safe:hover:border-slate-600',
                         selectedId === character.id
-                          ? 'border-violet-500 bg-violet-50 dark:bg-violet-500/20'
+                          ? 'border-sky-500 bg-sky-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-sky-400 dark:bg-sky-950/35'
                           : 'border-slate-200 dark:border-slate-700'
                       )}
                     >
@@ -1905,7 +1939,7 @@ export default function App(): JSX.Element {
                 <button
                   type="button"
                   onClick={() => void saveCharacter()}
-                  className="rounded-lg bg-violet-600 px-4 py-2 text-sm font-semibold text-white"
+                  className={cn('rounded-lg px-4 py-2 text-sm font-semibold text-white', scheme.primary)}
                 >
                   Save
                 </button>
@@ -2050,9 +2084,9 @@ export default function App(): JSX.Element {
                     onChange={(event) => setColorScheme(event.target.value as ColorScheme)}
                     className="mt-1 w-full rounded border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
                   >
-                    <option value="violet">Violet</option>
-                    <option value="teal">Teal</option>
-                    <option value="sunset">Sunset</option>
+                    <option value="violet">Sky meadow</option>
+                    <option value="teal">Crystal tide</option>
+                    <option value="sunset">Sunset coral</option>
                   </select>
                 </label>
                 <label className="mt-2 block text-xs">

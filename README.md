@@ -49,7 +49,7 @@ npm run dev
 The sign-in screen pulls **`update-log.json`** from the repo root. After you publish on GitHub:
 
 1. Commit **`update-log.json`** at the repository root (same file ships as the offline fallback).
-2. Set **`githubRepo`** in **`update-feed.config.json`** to `your-user/epic-character-storage` (and **`branch`** if not `main`).
+2. This repo ships with **`githubRepo`** set to `Rhinehart58/Epic-Character-Storage` in **`update-feed.config.json`** (change it if you fork). Adjust **`branch`** if your default branch is not `main`.
 3. The app builds a Raw URL of the form  
    `https://raw.githubusercontent.com/<githubRepo>/<branch>/update-log.json`  
    and refreshes it about every five minutes while the login screen is open.

@@ -1,6 +1,12 @@
 {
-  "updatedAt": "2026-05-06T00:00:00.000Z",
+  "updatedAt": "2026-05-06T20:00:00.000Z",
   "entries": [
+    {
+      "id": "ecs-2026-05-06-github-feed",
+      "date": "2026-05-06",
+      "title": "GitHub-hosted update log",
+      "details": "Login screen pulls live notes from Raw GitHub (see update-feed.config.json). Settings menu renders above all UI via a portal overlay."
+    },
     {
       "id": "ecs-2026-05-06-ui",
       "date": "2026-05-06",

@@ -6,6 +6,7 @@ import feedRaw from '../../../../update-feed.config.json'
 import { cn } from '../lib/utils'
 
 const POLL_MS = 5 * 60 * 1000
+const POLL_MINUTES = Math.max(1, Math.round(POLL_MS / 60000))
 const bundledUpdateLog = bundledRaw as UpdateLogPayload
 
 type UpdateFeedConfig = { githubRepo?: string; branch?: string }
@@ -71,6 +72,14 @@ export function LoginUpdateLog(props: { className?: string }): JSX.Element {
   }, [refresh])
 
   useEffect(() => {
+    const onVisibility = (): void => {
+      if (document.visibilityState === 'visible') void refresh()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => document.removeEventListener('visibilitychange', onVisibility)
+  }, [refresh])
+
+  useEffect(() => {
     void window.appApi
       .getVersion()
       .then((v) => setAppVersion(v))
@@ -92,8 +101,8 @@ export function LoginUpdateLog(props: { className?: string }): JSX.Element {
           : 'Bundled log'
         : remoteUrl
           ? fromGithub
-            ? 'Live updates from GitHub (refreshes every 5 min)'
-            : 'Live feed on (refreshes every 5 min)'
+            ? `Live updates from GitHub — every ${POLL_MINUTES} min or when you return to this window`
+            : `Live feed — every ${POLL_MINUTES} min or when you return to this window`
           : 'Bundled log — set githubRepo in update-feed.config.json or VITE_UPDATE_LOG_URL'
 
   return (
@@ -103,14 +112,24 @@ export function LoginUpdateLog(props: { className?: string }): JSX.Element {
         className
       )}
     >
-      <div className="flex shrink-0 flex-wrap items-baseline justify-between gap-2 border-b border-white/15 pb-3">
+      <div className="flex shrink-0 flex-wrap items-start justify-between gap-2 border-b border-white/15 pb-3">
         <div>
           <div className="text-[10px] font-semibold uppercase tracking-[0.2em] text-white/70">Update log</div>
           <div className="mt-1 text-sm font-semibold text-white">What&apos;s new</div>
         </div>
-        {appVersion ? (
-          <span className="rounded-full bg-black/20 px-2 py-0.5 font-mono text-[10px] text-white/85">v{appVersion}</span>
-        ) : null}
+        <div className="flex shrink-0 flex-col items-end gap-1">
+          {appVersion ? (
+            <span className="rounded-full bg-black/20 px-2 py-0.5 font-mono text-[10px] text-white/85">v{appVersion}</span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => void refresh()}
+            disabled={fetchStatus === 'loading'}
+            className="ecs-interactive rounded-md border border-white/25 bg-white/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white/90 hover:bg-white/20 disabled:opacity-50"
+          >
+            {fetchStatus === 'loading' ? 'Refreshing…' : 'Refresh now'}
+          </button>
+        </div>
       </div>
       <p className="mt-2 shrink-0 text-[11px] leading-relaxed text-white/75">{statusLabel}</p>
       {lastFetchAt ? (

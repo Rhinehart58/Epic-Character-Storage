@@ -5,10 +5,19 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['"DM Sans"', 'system-ui', 'sans-serif']
+        sans: ['"Segoe UI"', '"Candara"', '"Corbel"', '"DejaVu Sans"', '"DM Sans"', 'system-ui', 'sans-serif']
       },
       boxShadow: {
-        soft: '0 22px 70px rgba(15, 23, 42, 0.45)'
+        soft: '0 22px 70px rgba(15, 23, 42, 0.45)',
+        'aero-inset':
+          'inset 0 1px 0 rgba(255, 255, 255, 0.72), inset 0 -1px 0 rgba(15, 118, 110, 0.08)',
+        'aero-inset-dark':
+          'inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -1px 0 rgba(0, 0, 0, 0.35)',
+        'aero-float': '0 18px 48px rgba(8, 145, 178, 0.18), 0 4px 14px rgba(15, 118, 110, 0.12)',
+        'aero-card':
+          '0 18px 48px rgba(8, 145, 178, 0.16), 0 4px 14px rgba(15, 118, 110, 0.1), inset 0 1px 0 rgba(255, 255, 255, 0.72), inset 0 -1px 0 rgba(15, 118, 110, 0.07)',
+        'aero-card-dark':
+          '0 18px 48px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.12), inset 0 -1px 0 rgba(0, 0, 0, 0.35)'
       },
       keyframes: {
         ecsPopIn: {
@@ -26,13 +35,24 @@ module.exports = {
         ecsPulseSoft: {
           '0%, 100%': { opacity: '1' },
           '50%': { opacity: '0.82' }
+        },
+        ecsAeroFloat: {
+          '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
+          '33%': { transform: 'translate(12px, -18px) scale(1.03)' },
+          '66%': { transform: 'translate(-16px, 10px) scale(0.98)' }
+        },
+        ecsAeroRibbon: {
+          '0%, 100%': { transform: 'rotate(-8deg) translateX(-4%)' },
+          '50%': { transform: 'rotate(-6deg) translateX(4%)' }
         }
       },
       animation: {
         'ecs-pop-in': 'ecsPopIn 180ms cubic-bezier(0.22, 1, 0.36, 1) both',
         'ecs-fade-up': 'ecsFadeUp 260ms cubic-bezier(0.22, 1, 0.36, 1) both',
         'ecs-backdrop-in': 'ecsBackdropIn 200ms ease-out both',
-        'ecs-pulse-soft': 'ecsPulseSoft 2.4s ease-in-out infinite'
+        'ecs-pulse-soft': 'ecsPulseSoft 2.4s ease-in-out infinite',
+        'ecs-aero-float': 'ecsAeroFloat 22s ease-in-out infinite',
+        'ecs-aero-ribbon': 'ecsAeroRibbon 28s ease-in-out infinite'
       }
     }
   },

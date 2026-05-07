@@ -5,24 +5,39 @@
 body {
   margin: 0;
   min-height: 100vh;
-  font-family: Inter, 'DM Sans', system-ui, sans-serif;
 }
 
 ::selection {
-  background: rgba(139, 92, 246, 0.35);
+  background: rgba(34, 211, 238, 0.35);
 }
 
-/* Abstract layout primitives (original styling — not tied to any third-party sheet product) */
+/*
+ * Visual language inspired by mid-2000s–early-2010s UI ("Web 2.0 gloss" / Frutiger Aero cues):
+ * bright optimistic gradients, glassy highlights, organic blobs, humanist system sans stack (Segoe-era).
+ */
 .ecs-shape-card {
-  clip-path: polygon(0 14px, 14px 0, 100% 0, 100% calc(100% - 18px), calc(100% - 18px) 100%, 0 100%);
+  clip-path: polygon(
+    0 9%,
+    6% 0,
+    54% 0,
+    62% 4%,
+    96% 0,
+    100% 12%,
+    100% 76%,
+    94% 100%,
+    44% 100%,
+    38% 96%,
+    12% 100%,
+    0 88%
+  );
 }
 
 .ecs-shape-soft {
-  border-radius: 0.75rem 2rem 0.75rem 1.25rem;
+  border-radius: 1.35rem 2.65rem 1.1rem 2.1rem / 1.65rem 1.05rem 2.35rem 1.25rem;
 }
 
 .ecs-shape-banner {
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 24px), 92% 100%, 0 100%);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 28px), 88% 100%, 0 100%);
 }
 
 .ecs-portrait-hex {
@@ -31,21 +46,23 @@ body {
 
 .ecs-diagonal-strip {
   background: linear-gradient(
-    115deg,
+    118deg,
     transparent 0%,
-    rgba(139, 92, 246, 0.08) 35%,
-    rgba(56, 189, 248, 0.06) 55%,
-    transparent 70%
+    rgba(103, 232, 249, 0.2) 22%,
+    rgba(190, 242, 100, 0.14) 42%,
+    rgba(253, 186, 116, 0.12) 62%,
+    transparent 82%
   );
 }
 
 .dark .ecs-diagonal-strip {
   background: linear-gradient(
-    115deg,
+    118deg,
     transparent 0%,
-    rgba(139, 92, 246, 0.12) 35%,
-    rgba(56, 189, 248, 0.1) 55%,
-    transparent 70%
+    rgba(34, 211, 238, 0.1) 25%,
+    rgba(52, 211, 153, 0.09) 48%,
+    rgba(251, 191, 36, 0.06) 70%,
+    transparent 88%
   );
 }
 
@@ -55,13 +72,187 @@ body {
 
 .ecs-grid-wash {
   background-image:
-    linear-gradient(rgba(148, 163, 184, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(148, 163, 184, 0.08) 1px, transparent 1px);
-  background-size: 26px 26px;
-  mask-image: radial-gradient(circle at 50% 25%, black, transparent 75%);
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.5) 0%, transparent 65%),
+    radial-gradient(circle at 20% 30%, rgba(103, 232, 249, 0.15) 0%, transparent 42%),
+    radial-gradient(circle at 80% 70%, rgba(167, 243, 208, 0.12) 0%, transparent 38%);
+  background-size:
+    18px 18px,
+    280px 280px,
+    320px 320px;
+  background-position:
+    0 0,
+    12% 8%,
+    72% 60%;
+  mask-image: radial-gradient(circle at 45% 20%, black, transparent 82%);
+  opacity: 0.85;
 }
 
-/* Respect OS reduced-motion */
+.dark .ecs-grid-wash {
+  background-image:
+    radial-gradient(circle at center, rgba(15, 118, 110, 0.15) 0%, transparent 60%),
+    radial-gradient(circle at 25% 35%, rgba(6, 182, 212, 0.12) 0%, transparent 45%),
+    radial-gradient(circle at 78% 65%, rgba(52, 211, 153, 0.08) 0%, transparent 40%);
+  opacity: 0.65;
+}
+
+/* Full-window Aero-like ambience */
+.ecs-aero-scene {
+  isolation: isolate;
+}
+
+.ecs-aero-sky {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 130% 90% at 5% -5%, rgba(56, 189, 248, 0.45), transparent 58%),
+    radial-gradient(ellipse 95% 80% at 102% 98%, rgba(52, 211, 153, 0.35), transparent 52%),
+    radial-gradient(ellipse 55% 45% at 72% 8%, rgba(251, 191, 36, 0.22), transparent 48%),
+    radial-gradient(ellipse 70% 60% at 28% 88%, rgba(244, 114, 182, 0.12), transparent 50%),
+    linear-gradient(
+      168deg,
+      #dbeafe 0%,
+      #ecfccb 32%,
+      #fef9c3 58%,
+      #fce7f3 92%
+    );
+}
+
+.dark .ecs-aero-sky {
+  background:
+    radial-gradient(ellipse 120% 85% at -5% 0%, rgba(8, 145, 178, 0.45), transparent 55%),
+    radial-gradient(ellipse 90% 75% at 105% 100%, rgba(5, 150, 105, 0.32), transparent 52%),
+    radial-gradient(ellipse 50% 40% at 65% 5%, rgba(217, 70, 239, 0.18), transparent 45%),
+    linear-gradient(175deg, #0f172a 0%, #064e3b 42%, #1e3a5f 78%, #0c1222 100%);
+}
+
+.ecs-aero-ribbon {
+  position: absolute;
+  left: -25%;
+  top: 8%;
+  width: 150%;
+  height: 42%;
+  transform: rotate(-9deg);
+  background: linear-gradient(
+    95deg,
+    transparent,
+    rgba(255, 255, 255, 0.55) 45%,
+    rgba(255, 255, 255, 0.08) 62%,
+    transparent 82%
+  );
+  opacity: 0.42;
+  filter: blur(36px);
+  pointer-events: none;
+}
+
+.dark .ecs-aero-ribbon {
+  opacity: 0.22;
+  background: linear-gradient(
+    95deg,
+    transparent,
+    rgba(103, 232, 249, 0.25) 48%,
+    transparent 78%
+  );
+}
+
+.ecs-aero-orb {
+  position: absolute;
+  pointer-events: none;
+  filter: blur(1px);
+}
+
+.ecs-aero-orb--a {
+  width: min(78vmin, 520px);
+  height: min(58vmin, 420px);
+  left: -10%;
+  top: 32%;
+  border-radius: 58% 42% 61% 39% / 48% 45% 55% 52%;
+  transform: rotate(-18deg);
+  background: radial-gradient(
+    ellipse at 38% 32%,
+    rgba(255, 255, 255, 0.74),
+    rgba(103, 232, 249, 0.45) 42%,
+    rgba(34, 197, 94, 0.22) 68%,
+    transparent 82%
+  );
+  opacity: 0.55;
+  box-shadow: inset -40px -30px 80px rgba(255, 255, 255, 0.35), 0 0 120px rgba(56, 189, 248, 0.2);
+}
+
+.ecs-aero-orb--b {
+  width: min(52vmin, 340px);
+  height: min(52vmin, 340px);
+  right: -6%;
+  top: -12%;
+  border-radius: 45% 55% 52% 48% / 55% 42% 58% 45%;
+  transform: rotate(22deg);
+  background: radial-gradient(circle at 35% 35%, rgba(254, 249, 195, 0.95), rgba(251, 191, 36, 0.35) 52%, transparent 72%);
+  opacity: 0.38;
+}
+
+.ecs-aero-orb--c {
+  width: min(44vmin, 300px);
+  height: min(36vmin, 240px);
+  right: 18%;
+  bottom: -8%;
+  border-radius: 63% 37% 42% 58% / 42% 63% 37% 58%;
+  transform: rotate(12deg);
+  background: radial-gradient(
+    ellipse at 50% 40%,
+    rgba(251, 207, 232, 0.55),
+    rgba(244, 114, 182, 0.2) 58%,
+    transparent 78%
+  );
+  opacity: 0.45;
+}
+
+.dark .ecs-aero-orb--a {
+  background: radial-gradient(
+    ellipse at 40% 35%,
+    rgba(165, 243, 252, 0.35),
+    rgba(6, 182, 212, 0.22) 48%,
+    rgba(16, 185, 129, 0.12) 72%,
+    transparent 88%
+  );
+  opacity: 0.4;
+  box-shadow: inset -20px -20px 60px rgba(103, 232, 249, 0.12), 0 0 90px rgba(8, 145, 178, 0.25);
+}
+
+.dark .ecs-aero-orb--b {
+  opacity: 0.22;
+  background: radial-gradient(circle at 40% 40%, rgba(253, 224, 71, 0.3), rgba(245, 158, 11, 0.15) 55%, transparent 75%);
+}
+
+.dark .ecs-aero-orb--c {
+  opacity: 0.28;
+}
+
+.ecs-aero-login-shell {
+  background:
+    radial-gradient(ellipse 90% 70% at 10% 20%, rgba(56, 189, 248, 0.22), transparent 55%),
+    radial-gradient(ellipse 70% 60% at 90% 85%, rgba(52, 211, 153, 0.18), transparent 52%),
+    linear-gradient(155deg, #e0f2fe 0%, #f7fee7 45%, #fef3c7 100%);
+}
+
+.dark .ecs-aero-login-shell {
+  background:
+    radial-gradient(ellipse 80% 65% at 15% 25%, rgba(8, 145, 178, 0.35), transparent 58%),
+    linear-gradient(165deg, #020617 0%, #0f172a 55%, #042f2e 100%);
+}
+
+.ecs-aero-glass-panel {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -1px 0 rgba(13, 148, 136, 0.06),
+    0 14px 42px rgba(8, 145, 178, 0.12);
+}
+
+.dark .ecs-aero-glass-panel {
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.4),
+    0 14px 42px rgba(0, 0, 0, 0.35);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .ecs-grid-wash {
     animation: none;

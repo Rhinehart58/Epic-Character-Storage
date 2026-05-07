@@ -7,7 +7,7 @@
   "homepage": "https://electron-vite.org",
   "repository": {
     "type": "git",
-    "url": "https://github.com/YOUR_GITHUB_USER/epic-character-storage.git"
+    "url": "https://github.com/Rhinehart58/Epic-Character-Storage.git"
   },
   "scripts": {
     "format": "prettier --write .",
