@@ -17,27 +17,23 @@ body {
  */
 .ecs-shape-card {
   clip-path: polygon(
-    0 9%,
-    6% 0,
-    54% 0,
-    62% 4%,
-    96% 0,
-    100% 12%,
-    100% 76%,
-    94% 100%,
-    44% 100%,
-    38% 96%,
-    12% 100%,
-    0 88%
+    0 4%,
+    3% 0,
+    97% 0,
+    100% 4%,
+    100% 96%,
+    97% 100%,
+    3% 100%,
+    0 96%
   );
 }
 
 .ecs-shape-soft {
-  border-radius: 1.35rem 2.65rem 1.1rem 2.1rem / 1.65rem 1.05rem 2.35rem 1.25rem;
+  border-radius: 1.1rem 1.5rem 1.15rem 1.45rem / 1.2rem 1rem 1.3rem 1.05rem;
 }
 
 .ecs-shape-banner {
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 28px), 88% 100%, 0 100%);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 16px), 95% 100%, 0 100%);
 }
 
 .ecs-portrait-hex {
@@ -104,25 +100,71 @@ body {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(ellipse 130% 90% at 5% -5%, rgba(56, 189, 248, 0.45), transparent 58%),
-    radial-gradient(ellipse 95% 80% at 102% 98%, rgba(52, 211, 153, 0.35), transparent 52%),
-    radial-gradient(ellipse 55% 45% at 72% 8%, rgba(251, 191, 36, 0.22), transparent 48%),
-    radial-gradient(ellipse 70% 60% at 28% 88%, rgba(244, 114, 182, 0.12), transparent 50%),
+    radial-gradient(ellipse 118% 92% at 4% -8%, rgba(14, 165, 233, 0.52), transparent 56%),
+    radial-gradient(ellipse 102% 84% at 100% 104%, rgba(34, 197, 94, 0.42), transparent 54%),
+    radial-gradient(ellipse 62% 52% at 78% 6%, rgba(251, 191, 36, 0.28), transparent 46%),
+    radial-gradient(ellipse 72% 58% at 18% 92%, rgba(244, 114, 182, 0.18), transparent 52%),
+    radial-gradient(ellipse 55% 40% at 48% 48%, rgba(255, 255, 255, 0.55), transparent 62%),
     linear-gradient(
-      168deg,
-      #dbeafe 0%,
-      #ecfccb 32%,
-      #fef9c3 58%,
-      #fce7f3 92%
+      162deg,
+      #bfdbfe 0%,
+      #d9f99d 26%,
+      #fef08a 52%,
+      #fbcfe8 78%,
+      #e0f2fe 100%
     );
 }
 
 .dark .ecs-aero-sky {
   background:
-    radial-gradient(ellipse 120% 85% at -5% 0%, rgba(8, 145, 178, 0.45), transparent 55%),
-    radial-gradient(ellipse 90% 75% at 105% 100%, rgba(5, 150, 105, 0.32), transparent 52%),
-    radial-gradient(ellipse 50% 40% at 65% 5%, rgba(217, 70, 239, 0.18), transparent 45%),
-    linear-gradient(175deg, #0f172a 0%, #064e3b 42%, #1e3a5f 78%, #0c1222 100%);
+    radial-gradient(ellipse 115% 88% at -8% -4%, rgba(6, 182, 212, 0.48), transparent 54%),
+    radial-gradient(ellipse 96% 78% at 108% 108%, rgba(16, 185, 129, 0.38), transparent 52%),
+    radial-gradient(ellipse 54% 42% at 62% 2%, rgba(192, 38, 211, 0.22), transparent 44%),
+    radial-gradient(ellipse 68% 52% at 22% 94%, rgba(59, 130, 246, 0.14), transparent 50%),
+    linear-gradient(172deg, #020617 0%, #0f766e 38%, #1e3a8a 72%, #050816 100%);
+}
+
+.ecs-aero-vignette {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 92% 88% at 50% 42%,
+    transparent 38%,
+    rgba(255, 255, 255, 0.07) 72%,
+    rgba(56, 189, 248, 0.06) 100%
+  );
+}
+
+.dark .ecs-aero-vignette {
+  background: radial-gradient(ellipse 95% 90% at 48% 48%, transparent 30%, rgba(0, 0, 0, 0.62) 100%);
+}
+
+.ecs-aero-specular {
+  position: absolute;
+  inset: -15%;
+  pointer-events: none;
+  opacity: 0.22;
+  mix-blend-mode: soft-light;
+  background: linear-gradient(
+    118deg,
+    transparent 28%,
+    rgba(255, 255, 255, 0.85) 46%,
+    rgba(255, 255, 255, 0.15) 54%,
+    transparent 72%
+  );
+  filter: blur(14px);
+}
+
+.dark .ecs-aero-specular {
+  opacity: 0.14;
+  mix-blend-mode: screen;
+  background: linear-gradient(
+    118deg,
+    transparent 32%,
+    rgba(103, 232, 249, 0.35) 49%,
+    transparent 68%
+  );
 }
 
 .ecs-aero-ribbon {
@@ -253,9 +295,1317 @@ body {
     0 14px 42px rgba(0, 0, 0, 0.35);
 }
 
+/* --- Palette switching (late 90s chrome vs Y2K neon vs Aero gloss) --- */
+.ecs-palette-backdrop {
+  position: absolute;
+  inset: 0;
+  isolation: isolate;
+  pointer-events: none;
+}
+
+.ecs-palette-layer {
+  position: absolute;
+  inset: 0;
+  display: none;
+}
+
+html[data-ecs-palette='default'] .ecs-palette-layer--default,
+html[data-ecs-palette='violet'] .ecs-palette-layer--violet,
+html[data-ecs-palette='teal'] .ecs-palette-layer--teal,
+html[data-ecs-palette='sunset'] .ecs-palette-layer--sunset,
+html[data-ecs-palette='wii'] .ecs-palette-layer--wii,
+html[data-ecs-palette='xmb'] .ecs-palette-layer--xmb,
+html[data-ecs-palette='cube'] .ecs-palette-layer--cube,
+html[data-ecs-palette='wiiu'] .ecs-palette-layer--wiiu,
+html[data-ecs-palette='3ds'] .ecs-palette-layer--3ds {
+  display: block;
+}
+
+/* Default theme: clean modern neutral surface */
+.ecs-default-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse at top, rgba(241, 245, 249, 0.9), transparent 65%),
+    linear-gradient(180deg, #f8fafc 0%, #eef2f7 100%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='default'] .ecs-default-backdrop {
+  background:
+    radial-gradient(ellipse at top, rgba(15, 23, 42, 0.95), transparent 65%),
+    linear-gradient(180deg, #0f172a 0%, #020617 100%);
+}
+
+/* Windows‑95‑era teal desktop + chunky gray chrome */
+.ecs-win98-wallpaper {
+  position: absolute;
+  inset: 0;
+  background-color: #008080;
+  background-image:
+    radial-gradient(circle at 18% 22%, rgba(255, 255, 255, 0.07) 0%, transparent 42%),
+    radial-gradient(circle at 82% 78%, rgba(0, 0, 0, 0.12) 0%, transparent 38%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='teal'] .ecs-win98-wallpaper {
+  background-color: #004d4d;
+}
+
+.ecs-win98-pixel-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.09;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.35) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.35) 1px, transparent 1px);
+  background-size: 4px 4px;
+  mask-image: radial-gradient(circle at 50% 35%, black, transparent 78%);
+}
+
+.ecs-panel-teal {
+  border: 1px solid #1f2937;
+  background: #ece9d8;
+  color: #0f172a;
+  box-shadow:
+    inset -1px -1px 0 #404040,
+    inset 1px 1px 0 #ffffff,
+    3px 3px 0 rgba(0, 0, 0, 0.12);
+}
+
+html.dark[data-ecs-palette='teal'] .ecs-panel-teal {
+  border-color: #0a0a0a;
+  background: #585858;
+  color: #f4f4f5;
+  box-shadow:
+    inset -1px -1px 0 #222222,
+    inset 1px 1px 0 #8a8a8a,
+    4px 4px 0 rgba(0, 0, 0, 0.35);
+}
+
+.ecs-win98-window {
+  border-style: solid;
+  border-width: 1px;
+}
+
+html[data-ecs-palette='teal'] .ecs-diagonal-strip {
+  background: linear-gradient(
+    125deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.18) 38%,
+    rgba(0, 0, 0, 0.06) 62%,
+    transparent 85%
+  );
+}
+
+html[data-ecs-palette='teal'] .ecs-aero-login-shell {
+  background: #008080;
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='teal'] .ecs-aero-login-shell {
+  background: #004040;
+}
+
+html[data-ecs-palette='sunset'] .ecs-aero-login-shell {
+  background:
+    radial-gradient(ellipse 90% 70% at 20% 15%, rgba(251, 207, 232, 0.45), transparent 55%),
+    radial-gradient(ellipse 70% 60% at 85% 90%, rgba(165, 243, 252, 0.35), transparent 52%),
+    linear-gradient(155deg, #fff7ed 0%, #fce7f3 48%, #e0f2fe 100%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='sunset'] .ecs-aero-login-shell {
+  background:
+    radial-gradient(ellipse 80% 65% at 10% 10%, rgba(192, 38, 211, 0.35), transparent 55%),
+    linear-gradient(165deg, #0b0118 0%, #1e1b4b 45%, #082f49 100%);
+}
+
+/* Wii-style silver stage + soft channel grid */
+.ecs-wii-scene {
+  isolation: isolate;
+}
+
+.ecs-wii-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 110% 85% at 50% 115%, rgba(255, 255, 255, 0.55), transparent 52%),
+    radial-gradient(ellipse 70% 55% at 12% 18%, rgba(255, 255, 255, 0.35), transparent 48%),
+    linear-gradient(185deg, #e8eaef 0%, #d3d8e2 42%, #b9c0cd 100%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='wii'] .ecs-wii-backdrop {
+  background:
+    radial-gradient(ellipse 100% 70% at 50% 100%, rgba(80, 140, 200, 0.12), transparent 55%),
+    linear-gradient(185deg, #2c313b 0%, #1f232c 45%, #14171e 100%);
+}
+
+.ecs-wii-channel-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.12;
+  background-image:
+    radial-gradient(
+      ellipse 110% 85% at 50% 108%,
+      rgba(255, 255, 255, 0.65),
+      transparent 58%
+    ),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 102px,
+      rgba(120, 130, 145, 0.085) 102px,
+      rgba(120, 130, 145, 0.085) 103px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 138px,
+      rgba(120, 130, 145, 0.08) 138px,
+      rgba(120, 130, 145, 0.08) 139px
+    );
+  mask-image: radial-gradient(ellipse 95% 75% at 50% 42%, black 0%, transparent 88%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='wii'] .ecs-wii-channel-grid {
+  opacity: 0.18;
+}
+
+.ecs-wii-pane-matrix {
+  position: absolute;
+  inset: 10% 8% 13%;
+  border-radius: 1.5rem;
+  opacity: 0.14;
+  background:
+    repeating-linear-gradient(
+      0deg,
+      rgba(255, 255, 255, 0.12),
+      rgba(255, 255, 255, 0.12) 1px,
+      transparent 1px,
+      transparent 102px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      rgba(255, 255, 255, 0.1),
+      rgba(255, 255, 255, 0.1) 1px,
+      transparent 1px,
+      transparent 138px
+    ),
+    radial-gradient(circle at 18% 24%, rgba(255, 255, 255, 0.4), transparent 34%),
+    radial-gradient(circle at 84% 76%, rgba(255, 255, 255, 0.26), transparent 35%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.72),
+    inset 0 -1px 0 rgba(71, 85, 105, 0.2);
+  pointer-events: none;
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='wii'] .ecs-wii-pane-matrix {
+  opacity: 0.1;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.55);
+}
+
+.ecs-wii-focus-dot {
+  position: absolute;
+  left: 14%;
+  top: 22%;
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  opacity: 0.45;
+  background: radial-gradient(circle at 35% 35%, #ffffff, rgba(56, 189, 248, 0.85) 62%, transparent 75%);
+  box-shadow: 0 0 18px rgba(56, 189, 248, 0.65);
+  pointer-events: none;
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='wii'] .ecs-wii-focus-dot {
+  opacity: 0.32;
+}
+
+.ecs-wii-shine-bubble {
+  position: absolute;
+  border-radius: 50%;
+  pointer-events: none;
+  filter: blur(36px);
+  opacity: 0.42;
+  background: radial-gradient(circle at 35% 35%, rgba(255, 255, 255, 0.95), rgba(56, 189, 248, 0.18) 58%, transparent 72%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='wii'] .ecs-wii-shine-bubble {
+  opacity: 0.22;
+  background: radial-gradient(circle at 40% 35%, rgba(180, 210, 240, 0.35), transparent 65%);
+}
+
+html[data-ecs-palette='wii'] .ecs-aero-login-shell {
+  background:
+    radial-gradient(ellipse 95% 75% at 12% 18%, rgba(255, 255, 255, 0.55), transparent 52%),
+    linear-gradient(178deg, #f4f6fa 0%, #dfe4ec 55%, #cdd4df 100%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='wii'] .ecs-aero-login-shell {
+  background:
+    radial-gradient(ellipse 90% 70% at 20% 14%, rgba(100, 140, 190, 0.18), transparent 55%),
+    linear-gradient(178deg, #1e222b 0%, #151820 100%);
+}
+
+/* PS3 XMB-inspired metallic depth + drifting wave sheen */
+.ecs-xmb-scene {
+  isolation: isolate;
+  --ecs-xmb-tint: rgba(2, 205, 199, 0.12);
+  --ecs-xmb-tint-strong: rgba(12, 118, 192, 0.18);
+}
+
+.ecs-xmb-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 120% 90% at 50% -12%, var(--ecs-xmb-tint), transparent 48%),
+    radial-gradient(ellipse 80% 65% at 78% 84%, var(--ecs-xmb-tint-strong), transparent 55%),
+    linear-gradient(172deg, #070c14 0%, #121c2e 38%, #05070e 100%);
+}
+
+.ecs-xmb-wave-layer {
+  position: absolute;
+  inset: -25% -15%;
+  opacity: 0.38;
+  pointer-events: none;
+  background: linear-gradient(
+    108deg,
+    transparent 0%,
+    rgba(56, 189, 248, 0.14) 28%,
+    transparent 46%,
+    rgba(147, 197, 253, 0.12) 62%,
+    transparent 82%
+  );
+  background-size: 220% 220%;
+}
+
+.ecs-xmb-wave-layer--secondary {
+  opacity: 0.24;
+  inset: -18% -10%;
+  transform: rotate(4deg);
+  background: linear-gradient(
+    106deg,
+    transparent 5%,
+    rgba(255, 255, 255, 0.08) 33%,
+    transparent 48%,
+    var(--ecs-xmb-tint-strong) 66%,
+    transparent 90%
+  );
+}
+
+.ecs-xmb-spark-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.045;
+  background-image:
+    radial-gradient(circle at center, rgba(255, 255, 255, 0.55) 0.6px, transparent 1px);
+  background-size: 5px 5px;
+}
+
+.ecs-xmb-column-guides {
+  position: absolute;
+  inset: 0;
+  opacity: 0.08;
+  background-image: repeating-linear-gradient(
+    90deg,
+    transparent,
+    transparent 12.5%,
+    rgba(148, 163, 184, 0.32) 12.5%,
+    rgba(148, 163, 184, 0.32) calc(12.5% + 1px)
+  );
+  mask-image: linear-gradient(to bottom, transparent 0%, black 25%, black 80%, transparent 100%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='xmb'] .ecs-xmb-column-guides {
+  opacity: 0.1;
+}
+
+html[data-ecs-month='1'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+  --ecs-xmb-tint: rgba(216, 191, 26, 0.14);
+  --ecs-xmb-tint-strong: rgba(229, 167, 8, 0.2);
+}
+
+html[data-ecs-month='2'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+  --ecs-xmb-tint: rgba(109, 178, 23, 0.14);
+  --ecs-xmb-tint-strong: rgba(23, 136, 22, 0.2);
+}
+
+html[data-ecs-month='3'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+  --ecs-xmb-tint: rgba(225, 126, 154, 0.14);
+  --ecs-xmb-tint-strong: rgba(180, 68, 192, 0.2);
+}
+
+html[data-ecs-month='4'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+  --ecs-xmb-tint: rgba(23, 136, 22, 0.14);
+  --ecs-xmb-tint-strong: rgba(2, 205, 199, 0.2);
+}
+
+html[data-ecs-month='5'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+  --ecs-xmb-tint: rgba(154, 97, 200, 0.14);
+  --ecs-xmb-tint-strong: rgba(180, 68, 192, 0.2);
+}
+
+html[data-ecs-month='6'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+  --ecs-xmb-tint: rgba(2, 205, 199, 0.14);
+  --ecs-xmb-tint-strong: rgba(12, 118, 192, 0.2);
+}
+
+html[data-ecs-month='7'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+  --ecs-xmb-tint: rgba(12, 118, 192, 0.14);
+  --ecs-xmb-tint-strong: rgba(56, 189, 248, 0.2);
+}
+
+html[data-ecs-month='8'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+  --ecs-xmb-tint: rgba(180, 68, 192, 0.14);
+  --ecs-xmb-tint-strong: rgba(225, 126, 154, 0.2);
+}
+
+html[data-ecs-month='9'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+  --ecs-xmb-tint: rgba(229, 167, 8, 0.14);
+  --ecs-xmb-tint-strong: rgba(216, 191, 26, 0.2);
+}
+
+html[data-ecs-month='10'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+  --ecs-xmb-tint: rgba(135, 91, 30, 0.15);
+  --ecs-xmb-tint-strong: rgba(229, 167, 8, 0.2);
+}
+
+html[data-ecs-month='11'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+  --ecs-xmb-tint: rgba(227, 65, 42, 0.15);
+  --ecs-xmb-tint-strong: rgba(225, 126, 154, 0.22);
+}
+
+html[data-ecs-month='12'][data-ecs-palette='xmb'] .ecs-xmb-scene {
+  --ecs-xmb-tint: rgba(203, 203, 203, 0.12);
+  --ecs-xmb-tint-strong: rgba(148, 163, 184, 0.2);
+}
+
+html[data-ecs-palette='xmb'] .ecs-aero-login-shell {
+  background: linear-gradient(168deg, #0b1525 0%, #06090f 100%);
+}
+
+.ecs-xmb-login-sheen {
+  position: absolute;
+  inset: 0;
+  opacity: 0.35;
+  pointer-events: none;
+  background: linear-gradient(
+    102deg,
+    transparent 20%,
+    rgba(56, 189, 248, 0.16) 42%,
+    transparent 58%
+  );
+  background-size: 200% 200%;
+}
+
+/* GameCube BIOS-inspired indigo glass + floating cubes */
+.ecs-cube-scene {
+  isolation: isolate;
+}
+
+.ecs-cube-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 90% 70% at 22% 20%, rgba(165, 180, 252, 0.32), transparent 52%),
+    radial-gradient(ellipse 78% 60% at 84% 82%, rgba(148, 163, 184, 0.2), transparent 54%),
+    linear-gradient(160deg, #050816 0%, #1e3a8a 45%, #0f172a 100%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='cube'] .ecs-cube-backdrop {
+  background:
+    radial-gradient(ellipse 86% 70% at 18% 18%, rgba(129, 140, 248, 0.28), transparent 54%),
+    radial-gradient(ellipse 68% 56% at 86% 80%, rgba(148, 163, 184, 0.12), transparent 48%),
+    linear-gradient(162deg, #030712 0%, #1e3a8a 42%, #0b1220 100%);
+}
+
+.ecs-cube-facet-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.08;
+  background-image:
+    linear-gradient(135deg, rgba(226, 232, 240, 0.22) 1px, transparent 1px),
+    linear-gradient(45deg, rgba(15, 23, 42, 0.08) 1px, transparent 1px);
+  background-size: 30px 30px, 30px 30px;
+  mask-image: radial-gradient(ellipse 85% 70% at 50% 38%, black 0%, transparent 78%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='cube'] .ecs-cube-facet-grid {
+  opacity: 0.12;
+}
+
+.ecs-cube-ghost-cube {
+  position: absolute;
+  pointer-events: none;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(226, 232, 240, 0.42);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    0 0 24px rgba(129, 140, 248, 0.26);
+  background: linear-gradient(145deg, rgba(226, 232, 240, 0.16), rgba(30, 41, 59, 0.08));
+}
+
+.ecs-cube-ghost-cube--a {
+  width: min(18vmin, 150px);
+  height: min(18vmin, 150px);
+  left: 16%;
+  top: 14%;
+  transform: rotate(-8deg);
+}
+
+.ecs-cube-ghost-cube--b {
+  width: min(14vmin, 120px);
+  height: min(14vmin, 120px);
+  right: 14%;
+  bottom: 18%;
+  transform: rotate(11deg);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='cube'] .ecs-cube-ghost-cube {
+  border-color: rgba(191, 219, 254, 0.35);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.1),
+    0 0 24px rgba(99, 102, 241, 0.3);
+}
+
+.ecs-cube-lime-pulse {
+  position: absolute;
+  width: min(90vmin, 720px);
+  height: min(55vmin, 420px);
+  left: 50%;
+  top: 62%;
+  transform: translate(-50%, -50%) rotate(-8deg);
+  border-radius: 40% 60% 48% 52% / 55% 42% 58% 45%;
+  pointer-events: none;
+  opacity: 0.12;
+  filter: blur(52px);
+  background: radial-gradient(ellipse at center, rgba(191, 219, 254, 0.45), transparent 68%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='cube'] .ecs-cube-lime-pulse {
+  opacity: 0.14;
+}
+
+/* Palette-specific component feel */
+html[data-ecs-palette='wii'] .ecs-theme-shell {
+  font-family: 'Trebuchet MS', 'Verdana', 'Segoe UI', sans-serif;
+}
+
+html[data-ecs-palette='wii'] .ecs-theme-shell input,
+html[data-ecs-palette='wii'] .ecs-theme-shell select,
+html[data-ecs-palette='wii'] .ecs-theme-shell textarea {
+  border-radius: 1rem;
+  border-color: rgba(148, 163, 184, 0.75);
+  background: rgba(255, 255, 255, 0.9);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='wii'] .ecs-theme-shell input,
+html[data-ecs-tone='dark'][data-ecs-palette='wii'] .ecs-theme-shell select,
+html[data-ecs-tone='dark'][data-ecs-palette='wii'] .ecs-theme-shell textarea {
+  border-color: rgba(100, 116, 139, 0.8);
+  background: rgba(51, 65, 85, 0.75);
+}
+
+html[data-ecs-palette='xmb'] .ecs-theme-shell {
+  font-family: 'Helvetica Neue', 'Arial', 'Segoe UI', sans-serif;
+}
+
+html[data-ecs-palette='xmb'] .ecs-theme-shell input,
+html[data-ecs-palette='xmb'] .ecs-theme-shell select,
+html[data-ecs-palette='xmb'] .ecs-theme-shell textarea {
+  border-radius: 0.45rem;
+  border-color: rgba(71, 85, 105, 0.85);
+  background: rgba(15, 23, 42, 0.86);
+  color: #e2e8f0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+html[data-ecs-palette='xmb'] .ecs-theme-shell input:focus,
+html[data-ecs-palette='xmb'] .ecs-theme-shell select:focus,
+html[data-ecs-palette='xmb'] .ecs-theme-shell textarea:focus {
+  outline: none;
+  border-color: rgba(56, 189, 248, 0.75);
+  box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+html[data-ecs-palette='cube'] .ecs-theme-shell {
+  font-family: 'Gill Sans', 'Trebuchet MS', 'Segoe UI', sans-serif;
+}
+
+html[data-ecs-palette='cube'] .ecs-theme-shell input,
+html[data-ecs-palette='cube'] .ecs-theme-shell select,
+html[data-ecs-palette='cube'] .ecs-theme-shell textarea {
+  border-radius: 0.5rem;
+  border-color: rgba(129, 140, 248, 0.65);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+html[data-ecs-palette='wiiu'] .ecs-theme-shell {
+  font-family: 'Segoe UI', 'Trebuchet MS', 'Verdana', sans-serif;
+}
+
+html[data-ecs-palette='wiiu'] .ecs-theme-shell input,
+html[data-ecs-palette='wiiu'] .ecs-theme-shell select,
+html[data-ecs-palette='wiiu'] .ecs-theme-shell textarea {
+  border-radius: 0.9rem;
+  border-color: rgba(34, 211, 238, 0.45);
+  background: rgba(255, 255, 255, 0.92);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='wiiu'] .ecs-theme-shell input,
+html[data-ecs-tone='dark'][data-ecs-palette='wiiu'] .ecs-theme-shell select,
+html[data-ecs-tone='dark'][data-ecs-palette='wiiu'] .ecs-theme-shell textarea {
+  border-color: rgba(34, 211, 238, 0.42);
+  background: rgba(15, 23, 42, 0.75);
+}
+
+html[data-ecs-palette='3ds'] .ecs-theme-shell {
+  font-family: 'Arial', 'Verdana', 'Segoe UI', sans-serif;
+}
+
+html[data-ecs-palette='3ds'] .ecs-theme-shell input,
+html[data-ecs-palette='3ds'] .ecs-theme-shell select,
+html[data-ecs-palette='3ds'] .ecs-theme-shell textarea {
+  border-radius: 0.45rem;
+  border-color: rgba(251, 113, 133, 0.55);
+  background: rgba(255, 255, 255, 0.94);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='3ds'] .ecs-theme-shell input,
+html[data-ecs-tone='dark'][data-ecs-palette='3ds'] .ecs-theme-shell select,
+html[data-ecs-tone='dark'][data-ecs-palette='3ds'] .ecs-theme-shell textarea {
+  border-color: rgba(251, 113, 133, 0.45);
+  background: rgba(39, 39, 42, 0.84);
+}
+
+html[data-ecs-palette='cube'] .ecs-aero-login-shell {
+  background:
+    radial-gradient(ellipse 88% 72% at 12% 18%, rgba(191, 219, 254, 0.52), transparent 52%),
+    linear-gradient(165deg, #e2e8f0 0%, #cbd5e1 45%, #dbeafe 100%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='cube'] .ecs-aero-login-shell {
+  background:
+    radial-gradient(ellipse 85% 68% at 10% 14%, rgba(129, 140, 248, 0.3), transparent 54%),
+    linear-gradient(168deg, #020617 0%, #0f172a 100%);
+}
+
+.ecs-wiiu-scene {
+  isolation: isolate;
+}
+
+.ecs-wiiu-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 88% 65% at 12% 16%, rgba(103, 232, 249, 0.28), transparent 52%),
+    radial-gradient(ellipse 70% 52% at 88% 84%, rgba(125, 211, 252, 0.24), transparent 52%),
+    linear-gradient(168deg, #ecfeff 0%, #dbeafe 50%, #cffafe 100%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='wiiu'] .ecs-wiiu-backdrop {
+  background:
+    radial-gradient(ellipse 82% 62% at 12% 14%, rgba(6, 182, 212, 0.24), transparent 55%),
+    linear-gradient(170deg, #031525 0%, #082f49 50%, #111827 100%);
+}
+
+.ecs-wiiu-tile-grid {
+  position: absolute;
+  inset: 8%;
+  border-radius: 1.25rem;
+  opacity: 0.14;
+  background-image:
+    repeating-linear-gradient(90deg, transparent, transparent 140px, rgba(14, 116, 144, 0.12) 140px, rgba(14, 116, 144, 0.12) 141px),
+    repeating-linear-gradient(0deg, transparent, transparent 96px, rgba(14, 116, 144, 0.1) 96px, rgba(14, 116, 144, 0.1) 97px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.ecs-wiiu-bar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 14%;
+  height: 18px;
+  opacity: 0.22;
+  background: linear-gradient(90deg, transparent, rgba(103, 232, 249, 0.75) 30%, rgba(56, 189, 248, 0.35) 60%, transparent);
+  filter: blur(8px);
+}
+
+.ecs-3ds-scene {
+  isolation: isolate;
+}
+
+.ecs-3ds-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 12% 14%, rgba(251, 113, 133, 0.24), transparent 40%),
+    radial-gradient(circle at 88% 82%, rgba(127, 29, 29, 0.22), transparent 44%),
+    linear-gradient(180deg, #ffe4e6 0%, #fecaca 50%, #fca5a5 100%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='3ds'] .ecs-3ds-backdrop {
+  background:
+    radial-gradient(circle at 14% 16%, rgba(244, 63, 94, 0.3), transparent 42%),
+    linear-gradient(180deg, #450a0a 0%, #18181b 48%, #7f1d1d 100%);
+}
+
+.ecs-3ds-dot-grid {
+  position: absolute;
+  inset: 0;
+  opacity: 0.08;
+  background-image: radial-gradient(circle at center, rgba(255, 255, 255, 0.5) 0.8px, transparent 1px);
+  background-size: 10px 10px;
+}
+
+.ecs-3ds-hinge {
+  position: absolute;
+  left: 8%;
+  right: 8%;
+  top: 52%;
+  height: 8px;
+  border-radius: 9999px;
+  opacity: 0.6;
+  background: linear-gradient(90deg, rgba(136, 19, 55, 0.3), rgba(255, 255, 255, 0.5), rgba(136, 19, 55, 0.3));
+}
+
+/* Y2K night sky + horizon grid */
+.ecs-y2k-space {
+  position: absolute;
+  inset: 0;
+}
+
+html[data-ecs-tone='light'][data-ecs-palette='sunset'] .ecs-y2k-space {
+  background:
+    radial-gradient(circle at 20% 30%, rgba(253, 224, 71, 0.35), transparent 42%),
+    radial-gradient(circle at 75% 65%, rgba(244, 114, 182, 0.28), transparent 48%),
+    linear-gradient(175deg, #fffbeb 0%, #fbcfe8 40%, #cffafe 100%);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='sunset'] .ecs-y2k-space {
+  background:
+    radial-gradient(1.5px 1.5px at 12% 18%, rgba(255, 255, 255, 0.65), transparent),
+    radial-gradient(1.5px 1.5px at 72% 42%, rgba(255, 255, 255, 0.45), transparent),
+    radial-gradient(1.5px 1.5px at 38% 76%, rgba(255, 255, 255, 0.55), transparent),
+    radial-gradient(ellipse 100% 70% at 50% -10%, rgba(192, 38, 211, 0.28), transparent 55%),
+    linear-gradient(175deg, #060010 0%, #1a0a2e 45%, #134e4a 92%);
+  background-size:
+    120px 120px,
+    140px 140px,
+    100px 100px,
+    auto,
+    auto;
+}
+
+.ecs-y2k-glow-ribbon {
+  position: absolute;
+  left: -20%;
+  top: 55%;
+  width: 140%;
+  height: 55%;
+  transform: rotate(-6deg);
+  background: linear-gradient(
+    92deg,
+    transparent,
+    rgba(103, 232, 249, 0.22) 42%,
+    rgba(244, 114, 182, 0.18) 58%,
+    transparent 78%
+  );
+  opacity: 0.55;
+  filter: blur(42px);
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='sunset'] .ecs-y2k-glow-ribbon {
+  opacity: 0.38;
+}
+
+.ecs-y2k-grid-floor {
+  position: absolute;
+  inset: 0;
+  opacity: 0.14;
+  background-image:
+    linear-gradient(rgba(103, 232, 249, 0.55) 1px, transparent 1px),
+    linear-gradient(95deg, rgba(244, 114, 182, 0.35) 1px, transparent 1px);
+  background-size:
+    48px 48px,
+    48px 48px;
+  mask-image: radial-gradient(ellipse 85% 65% at 50% 112%, black 0%, transparent 62%);
+}
+
+html[data-ecs-tone='light'][data-ecs-palette='sunset'] .ecs-y2k-grid-floor {
+  opacity: 0.08;
+  background-image:
+    linear-gradient(rgba(219, 39, 119, 0.35) 1px, transparent 1px),
+    linear-gradient(95deg, rgba(59, 130, 246, 0.25) 1px, transparent 1px);
+}
+
+.ecs-header-y2k {
+  background-image: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.12) 0%,
+    transparent 42%,
+    rgba(255, 255, 255, 0.06) 100%
+  );
+}
+
+/* ============================================================
+   Layout reordering per palette + accuracy details
+   ============================================================ */
+
+.ecs-workspace-flow {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.ecs-workspace-flow > [data-region='header'] {
+  order: 0;
+}
+.ecs-workspace-flow > [data-region='status'] {
+  order: 1;
+}
+.ecs-workspace-flow > [data-region='grid'] {
+  order: 2;
+}
+
+/* Win98 status bar is pinned at the bottom of the flow */
+.ecs-workspace-flow > [data-region='statusbar'] {
+  order: 99;
+}
+
+/* XMB places quick info at the very top, above the title bar */
+html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-workspace-flow > [data-region='status'] {
+  order: 0;
+}
+html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-workspace-flow > [data-region='header'] {
+  order: 1;
+}
+
+/* Y2K floats the status row above the title for a magazine-feed feel */
+html[data-ecs-layout='themed'][data-ecs-palette='sunset'] .ecs-workspace-flow > [data-region='status'] {
+  order: 0;
+  justify-content: center;
+}
+html[data-ecs-layout='themed'][data-ecs-palette='sunset'] .ecs-workspace-flow > [data-region='header'] {
+  order: 1;
+}
+
+/* Wii U pins the status row to the bottom like a system bar */
+html[data-ecs-layout='themed'][data-ecs-palette='wiiu'] .ecs-workspace-flow > [data-region='status'] {
+  order: 3;
+  margin-top: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  border-top: 1px solid rgba(125, 211, 252, 0.45);
+  border-bottom: 1px solid rgba(125, 211, 252, 0.25);
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(8px);
+  border-radius: 0.75rem;
+}
+html[data-ecs-tone='dark'][data-ecs-layout='themed'][data-ecs-palette='wiiu'] .ecs-workspace-flow > [data-region='status'] {
+  background: rgba(2, 6, 23, 0.6);
+  border-top-color: rgba(34, 211, 238, 0.35);
+  border-bottom-color: rgba(34, 211, 238, 0.2);
+}
+
+/* Default workspace grid: sidebar left, single column on small screens */
+.ecs-workspace-grid {
+  display: grid;
+  gap: 1.5rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 1024px) {
+  .ecs-workspace-grid {
+    grid-template-columns: 300px 1fr;
+  }
+
+  /* Aero (Vista) widens the navigation pane to feel like Windows Explorer's nav */
+  html[data-ecs-layout='themed'][data-ecs-palette='violet'] .ecs-workspace-grid {
+    grid-template-columns: 340px 1fr;
+  }
+
+  /* Win98 puts the explorer pane on the right (Windows Explorer details pane) */
+  html[data-ecs-layout='themed'][data-ecs-palette='teal'] .ecs-workspace-grid {
+    grid-template-columns: 1fr 260px;
+  }
+  html[data-ecs-layout='themed'][data-ecs-palette='teal'] .ecs-workspace-grid > aside {
+    order: 2;
+  }
+  html[data-ecs-layout='themed'][data-ecs-palette='teal'] .ecs-workspace-grid > main {
+    order: 1;
+  }
+
+  /* Y2K = MySpace-style: wide content on left, narrow widget panel on right */
+  html[data-ecs-layout='themed'][data-ecs-palette='sunset'] .ecs-workspace-grid {
+    grid-template-columns: 1fr 280px;
+  }
+  html[data-ecs-layout='themed'][data-ecs-palette='sunset'] .ecs-workspace-grid > aside {
+    order: 2;
+  }
+  html[data-ecs-layout='themed'][data-ecs-palette='sunset'] .ecs-workspace-grid > main {
+    order: 1;
+  }
+
+  /* GameCube BIOS: narrow side rail + centered detail card area */
+  html[data-ecs-layout='themed'][data-ecs-palette='cube'] .ecs-workspace-grid {
+    grid-template-columns: 240px 1fr;
+  }
+
+  /* Wii: top channel rail full-width, then content */
+  html[data-ecs-layout='themed'][data-ecs-palette='wii'] .ecs-workspace-grid,
+  html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-workspace-grid,
+  html[data-ecs-layout='themed'][data-ecs-palette='3ds'] .ecs-workspace-grid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Wii U: large content on the left, dashboard column on the right */
+  html[data-ecs-layout='themed'][data-ecs-palette='wiiu'] .ecs-workspace-grid {
+    grid-template-columns: 1fr 340px;
+  }
+  html[data-ecs-layout='themed'][data-ecs-palette='wiiu'] .ecs-workspace-grid > aside {
+    order: 2;
+  }
+  html[data-ecs-layout='themed'][data-ecs-palette='wiiu'] .ecs-workspace-grid > main {
+    order: 1;
+  }
+}
+
+/* Disable sticky sidebar for top/full-width sidebar layouts (themed only) */
+html[data-ecs-layout='themed'][data-ecs-palette='wii'] .ecs-workspace-grid > aside,
+html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-workspace-grid > aside,
+html[data-ecs-layout='themed'][data-ecs-palette='3ds'] .ecs-workspace-grid > aside,
+html[data-ecs-layout='themed'][data-ecs-palette='wiiu'] .ecs-workspace-grid > aside,
+html[data-ecs-layout='themed'][data-ecs-palette='teal'] .ecs-workspace-grid > aside,
+html[data-ecs-layout='themed'][data-ecs-palette='sunset'] .ecs-workspace-grid > aside {
+  position: static !important;
+  top: auto !important;
+  height: auto !important;
+}
+
+/* ----- Wii character grid: 3-column rounded channel tiles ----- */
+@media (min-width: 1024px) {
+  html[data-ecs-layout='themed'][data-ecs-palette='wii'] .ecs-character-list {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.65rem;
+    margin-top: 0.85rem;
+  }
+}
+
+html[data-ecs-layout='themed'][data-ecs-palette='wii'] .ecs-character-list > li > button {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.45rem;
+  padding: 0.85rem 0.6rem;
+  border-radius: 1.15rem;
+  background: linear-gradient(180deg, #ffffff 0%, #eef0f5 100%);
+  border: 1px solid rgba(148, 163, 184, 0.55);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 6px 14px rgba(15, 23, 42, 0.06);
+}
+
+html[data-ecs-tone='dark'][data-ecs-layout='themed'][data-ecs-palette='wii'] .ecs-character-list > li > button {
+  background: linear-gradient(180deg, #475569 0%, #334155 100%);
+  border-color: rgba(100, 116, 139, 0.65);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 6px 14px rgba(0, 0, 0, 0.35);
+}
+
+html[data-ecs-layout='themed'][data-ecs-palette='wii'] .ecs-character-list .ecs-portrait-hex {
+  clip-path: none;
+  border-radius: 0.6rem;
+  width: 56px !important;
+  height: 56px !important;
+}
+
+/* ----- XMB character row: horizontal scrolling category bar ----- */
+html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-character-list {
+  display: flex;
+  gap: 0.5rem;
+  overflow-x: auto;
+  padding-bottom: 0.5rem;
+  margin-top: 0.85rem;
+  scroll-snap-type: x mandatory;
+}
+
+html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-character-list > li {
+  flex: 0 0 auto;
+  scroll-snap-align: start;
+}
+
+html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-character-list > li > button {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  min-width: 130px;
+  gap: 0.4rem;
+  padding: 0.6rem 0.5rem;
+  border-radius: 0.5rem;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.7), rgba(2, 6, 23, 0.85));
+  border: 1px solid rgba(71, 85, 105, 0.55);
+  color: #e2e8f0;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-character-list .ecs-portrait-hex {
+  clip-path: none;
+  border-radius: 0.5rem;
+  width: 56px !important;
+  height: 56px !important;
+}
+
+/* ----- Y2K (sunset) character row: stacked sticker-style cards ----- */
+html[data-ecs-layout='themed'][data-ecs-palette='sunset'] .ecs-character-list > li > button {
+  border-radius: 1rem;
+  border: 2px solid rgba(244, 114, 182, 0.85);
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(254, 215, 230, 0.85) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 6px 18px rgba(236, 72, 153, 0.15);
+}
+
+html[data-ecs-tone='dark'][data-ecs-layout='themed'][data-ecs-palette='sunset'] .ecs-character-list > li > button {
+  border-color: rgba(217, 70, 239, 0.55);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(67, 11, 73, 0.65));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    0 6px 18px rgba(217, 70, 239, 0.18);
+}
+
+/* ----- Wii U character grid: 2-col tile dashboard ----- */
+@media (min-width: 1024px) {
+  html[data-ecs-layout='themed'][data-ecs-palette='wiiu'] .ecs-character-list {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.55rem;
+    margin-top: 0.85rem;
+  }
+}
+
+html[data-ecs-layout='themed'][data-ecs-palette='wiiu'] .ecs-character-list > li > button {
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 0.45rem;
+  padding: 0.7rem 0.5rem;
+  border-radius: 0.85rem;
+  background: linear-gradient(180deg, #ffffff 0%, #ecfeff 100%);
+  border: 1px solid rgba(34, 211, 238, 0.35);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 4px 14px rgba(14, 116, 144, 0.08);
+}
+
+html[data-ecs-tone='dark'][data-ecs-layout='themed'][data-ecs-palette='wiiu'] .ecs-character-list > li > button {
+  background: linear-gradient(180deg, #082f49 0%, #0c4a6e 100%);
+  border-color: rgba(34, 211, 238, 0.32);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: #e0f7ff;
+}
+
+html[data-ecs-layout='themed'][data-ecs-palette='wiiu'] .ecs-character-list .ecs-portrait-hex {
+  clip-path: none;
+  border-radius: 0.65rem;
+  width: 52px !important;
+  height: 52px !important;
+}
+
+/* ----- 3DS layout: sidebar = top screen, main = bottom screen, hinge in between ----- */
+html[data-ecs-layout='themed'][data-ecs-palette='3ds'] .ecs-workspace-grid > aside {
+  position: relative;
+  border: 8px solid #1f1f23;
+  border-radius: 1rem;
+  padding: 1rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(255, 228, 230, 0.96));
+  box-shadow: inset 0 0 0 2px rgba(244, 63, 94, 0.35), 0 8px 22px rgba(0, 0, 0, 0.18);
+  margin-bottom: 1.25rem;
+}
+
+html[data-ecs-tone='dark'][data-ecs-layout='themed'][data-ecs-palette='3ds'] .ecs-workspace-grid > aside {
+  border-color: #0a0a0a;
+  background: linear-gradient(180deg, rgba(63, 10, 10, 0.92), rgba(24, 24, 27, 0.92));
+  box-shadow: inset 0 0 0 2px rgba(244, 63, 94, 0.45), 0 8px 22px rgba(0, 0, 0, 0.5);
+}
+
+html[data-ecs-layout='themed'][data-ecs-palette='3ds'] .ecs-workspace-grid > aside::after {
+  content: '';
+  position: absolute;
+  left: 16%;
+  right: 16%;
+  bottom: -1.05rem;
+  height: 14px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, rgba(0, 0, 0, 0.7), rgba(82, 82, 91, 0.85), rgba(0, 0, 0, 0.7));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.18),
+    0 2px 6px rgba(0, 0, 0, 0.35);
+}
+
+html[data-ecs-layout='themed'][data-ecs-palette='3ds'] .ecs-workspace-grid > main > section:first-child {
+  border: 8px solid #1f1f23;
+  border-radius: 1rem;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96), rgba(254, 226, 226, 0.96));
+  box-shadow: inset 0 0 0 2px rgba(244, 63, 94, 0.35), 0 8px 22px rgba(0, 0, 0, 0.18);
+}
+
+html[data-ecs-tone='dark'][data-ecs-layout='themed'][data-ecs-palette='3ds'] .ecs-workspace-grid > main > section:first-child {
+  border-color: #0a0a0a;
+  background: linear-gradient(180deg, rgba(24, 24, 27, 0.95), rgba(63, 10, 10, 0.92));
+  box-shadow: inset 0 0 0 2px rgba(244, 63, 94, 0.45), 0 8px 22px rgba(0, 0, 0, 0.5);
+}
+
+html[data-ecs-layout='themed'][data-ecs-palette='3ds'] .ecs-character-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-height: 22vh;
+  overflow-y: auto;
+  margin-top: 0.75rem;
+}
+
+/* ----- GameCube BIOS: narrow rail with cube-tile rhythm ----- */
+html[data-ecs-layout='themed'][data-ecs-palette='cube'] .ecs-character-list > li > button {
+  border-radius: 0.5rem;
+  border: 1px solid rgba(129, 140, 248, 0.4);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(226, 232, 240, 0.85));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+}
+
+html[data-ecs-tone='dark'][data-ecs-layout='themed'][data-ecs-palette='cube'] .ecs-character-list > li > button {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.85), rgba(2, 6, 23, 0.95));
+  border-color: rgba(129, 140, 248, 0.4);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+/* ----- Y2K text glow accent for headings ----- */
+.ecs-y2k-text-glow {
+  background: linear-gradient(120deg, #f472b6 0%, #c084fc 45%, #22d3ee 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow: 0 0 14px rgba(244, 114, 182, 0.4);
+  letter-spacing: 0.01em;
+}
+
+html[data-ecs-tone='dark'][data-ecs-palette='sunset'] .ecs-y2k-text-glow {
+  text-shadow: 0 0 18px rgba(244, 114, 182, 0.6), 0 0 32px rgba(56, 189, 248, 0.3);
+}
+
+/* ----- Win98 menu bar (header secondary line) ----- */
+.ecs-win98-menubar > span {
+  padding: 0 0.5rem;
+  cursor: default;
+}
+.ecs-win98-menubar > span:hover {
+  background: #000080;
+  color: #ffffff;
+}
+
+/* Neutralize default vertical spacing when character list is laid out as grid/flex */
+html[data-ecs-layout='themed'][data-ecs-palette='wii'] .ecs-character-list > * + *,
+html[data-ecs-layout='themed'][data-ecs-palette='wiiu'] .ecs-character-list > * + *,
+html[data-ecs-layout='themed'][data-ecs-palette='xmb'] .ecs-character-list > * + * {
+  margin-top: 0;
+}
+
+/* Aero: a soft moving highlight on header to evoke Vista glass */
+html[data-ecs-palette='violet'] [data-region='header']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.5) 0%,
+    rgba(255, 255, 255, 0.05) 32%,
+    transparent 70%
+  );
+  opacity: 0.55;
+  mix-blend-mode: screen;
+}
+html[data-ecs-tone='dark'][data-ecs-palette='violet'] [data-region='header']::before {
+  background: linear-gradient(
+    180deg,
+    rgba(125, 211, 252, 0.18) 0%,
+    rgba(15, 23, 42, 0) 50%
+  );
+  opacity: 0.4;
+}
+
+/* Wii U: subtle accent color stripe at the top of the header */
+html[data-ecs-layout='themed'][data-ecs-palette='wiiu'] [data-region='header']::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 4px;
+  background: linear-gradient(90deg, #06b6d4, #0ea5e9, #38bdf8);
+  border-top-left-radius: inherit;
+  border-top-right-radius: inherit;
+}
+
+/* 3DS: small "open camera shutter" detail on the bottom screen frame */
+html[data-ecs-layout='themed'][data-ecs-palette='3ds'] .ecs-workspace-grid > main > section:first-child {
+  position: relative;
+}
+html[data-ecs-layout='themed'][data-ecs-palette='3ds'] .ecs-workspace-grid > main > section:first-child::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -0.55rem;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 8px;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #18181b, #3f3f46, #18181b);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18);
+}
+
+/* ============================================================
+   Settings tooltip popover
+   ============================================================ */
+
+.ecs-tooltip-trigger {
+  position: relative;
+}
+
+.ecs-tooltip-bubble {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  width: 220px;
+  max-width: 60vw;
+  padding: 0.55rem 0.7rem;
+  background: rgba(15, 23, 42, 0.96);
+  color: #f8fafc;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.4;
+  border-radius: 0.45rem;
+  pointer-events: none;
+  opacity: 0;
+  transform: translateX(-50%) translateY(4px);
+  transition: opacity 0.12s ease, transform 0.12s ease;
+  z-index: 60000;
+  white-space: normal;
+  text-align: left;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25), 0 0 0 1px rgba(255, 255, 255, 0.05);
+}
+
+.ecs-tooltip-bubble::after {
+  content: '';
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 5px solid transparent;
+  border-top-color: rgba(15, 23, 42, 0.96);
+}
+
+.ecs-tooltip-trigger:hover .ecs-tooltip-bubble,
+.ecs-tooltip-trigger:focus-visible .ecs-tooltip-bubble {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* ============================================================
+   Win98 status bar (themed teal layout)
+   ============================================================ */
+
+.ecs-win98-statusbar-cell {
+  padding: 0 0.55rem;
+  border-right: 1px solid rgba(0, 0, 0, 0.35);
+  box-shadow: inset -1px 0 0 #ffffff;
+  white-space: nowrap;
+}
+.ecs-win98-statusbar-cell:first-child {
+  padding-left: 0.5rem;
+}
+.ecs-win98-statusbar-cell:last-child {
+  border-right: none;
+  box-shadow: none;
+}
+html[data-ecs-tone='dark'][data-ecs-palette='teal'] .ecs-win98-statusbar-cell {
+  border-right-color: #222;
+  box-shadow: inset -1px 0 0 #888;
+}
+
+/* ============================================================
+   Aero (Vista) themed layout polish
+   ============================================================ */
+
+/* Wider Vista-style nav pane gets a subtle blue gradient wash */
+html[data-ecs-layout='themed'][data-ecs-palette='violet'] .ecs-workspace-grid > aside {
+  background-image: linear-gradient(
+    180deg,
+    rgba(186, 230, 253, 0.55) 0%,
+    rgba(255, 255, 255, 0.65) 22%,
+    rgba(255, 255, 255, 0.6) 100%
+  );
+}
+html[data-ecs-tone='dark'][data-ecs-layout='themed'][data-ecs-palette='violet'] .ecs-workspace-grid > aside {
+  background-image: linear-gradient(
+    180deg,
+    rgba(8, 47, 73, 0.55) 0%,
+    rgba(15, 23, 42, 0.55) 30%,
+    rgba(15, 23, 42, 0.7) 100%
+  );
+}
+
+/* ============================================================
+   Y2K (sunset) themed layout polish — MySpace-style widget panel
+   ============================================================ */
+
+html[data-ecs-layout='themed'][data-ecs-palette='sunset'] .ecs-workspace-grid > aside {
+  border-radius: 1.4rem;
+  background-image:
+    radial-gradient(circle at 10% 10%, rgba(244, 114, 182, 0.18), transparent 55%),
+    radial-gradient(circle at 95% 90%, rgba(56, 189, 248, 0.16), transparent 55%);
+  position: relative;
+}
+
+html[data-ecs-layout='themed'][data-ecs-palette='sunset'] .ecs-workspace-grid > aside::before {
+  content: '★ My Profile ★';
+  position: absolute;
+  top: -0.65rem;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 2px 12px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  color: #ffffff;
+  background: linear-gradient(90deg, #db2777, #d946ef, #38bdf8);
+  border-radius: 9999px;
+  box-shadow: 0 4px 12px rgba(217, 70, 239, 0.35);
+  text-transform: uppercase;
+}
+
+html[data-ecs-tone='dark'][data-ecs-layout='themed'][data-ecs-palette='sunset'] .ecs-workspace-grid > aside::before {
+  background: linear-gradient(90deg, #be185d, #a21caf, #0ea5e9);
+}
+
+/* ============================================================
+   Reduced motion
+   ============================================================ */
+
 @media (prefers-reduced-motion: reduce) {
   .ecs-grid-wash {
     animation: none;
+  }
+
+  .ecs-xmb-wave-layer,
+  .ecs-xmb-login-sheen,
+  .ecs-cube-ghost-cube {
+    animation: none !important;
+  }
+
+  .ecs-tooltip-bubble {
+    transition: none;
   }
 }
 

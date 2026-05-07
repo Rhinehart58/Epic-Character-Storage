@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import type { JSX } from 'react'
+import type { JSX, ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import type { CampaignRecord, CharacterRecord, CharacterSaveInput } from '@shared/character-types'
 import { createDefaultStats } from '@shared/character-types'
@@ -11,7 +11,7 @@ type ThemeMode = 'system' | 'light' | 'dark'
 type VisualStyle = 'clean' | 'parchment'
 type AuthMode = 'login' | 'register' | 'dev' | 'reset'
 type WorkspaceTab = 'sheet' | 'battle'
-type ColorScheme = 'violet' | 'teal' | 'sunset'
+type ColorScheme = 'default' | 'violet' | 'teal' | 'sunset' | 'wii' | 'xmb' | 'cube' | 'wiiu' | '3ds'
 type QuickPreset = 'frontliner' | 'caster' | 'rogue'
 type RulesMode = 'ttrpg' | 'dnd'
 type EditableCharacter = Omit<CharacterSaveInput, 'ownerAccountId' | 'campaignId'>
@@ -160,10 +160,57 @@ function passwordChecks(password: string): { label: string; pass: boolean }[] {
   ]
 }
 
+function ecsAuthControlRound(cs: ColorScheme): string {
+  if (cs === 'teal') return 'rounded-md'
+  if (cs === 'wii') return 'rounded-2xl'
+  if (cs === 'wiiu') return 'rounded-xl'
+  if (cs === '3ds') return 'rounded-md'
+  if (cs === 'default') return 'rounded-lg'
+  return 'rounded-lg'
+}
+
+function ecsWideControlRound(cs: ColorScheme): string {
+  if (cs === 'teal') return 'rounded-md'
+  if (cs === 'wii') return 'rounded-2xl'
+  if (cs === 'wiiu') return 'rounded-xl'
+  if (cs === '3ds') return 'rounded-md'
+  if (cs === 'default') return 'rounded-lg'
+  return 'rounded-xl'
+}
+
+function ecsCharacterRowRound(cs: ColorScheme): string {
+  if (cs === 'teal') return 'rounded-md'
+  if (cs === 'wii') return 'rounded-2xl'
+  if (cs === 'wiiu') return 'rounded-xl'
+  if (cs === '3ds') return 'rounded-md'
+  if (cs === 'default') return 'rounded-lg'
+  return 'rounded-lg'
+}
+
+function SettingsLabel({ children, hint }: { children: ReactNode; hint: string }): JSX.Element {
+  return (
+    <span className="ecs-tooltip-label inline-flex items-center gap-1.5">
+      {children}
+      <span
+        className="ecs-tooltip-trigger relative inline-flex h-4 w-4 cursor-help select-none items-center justify-center rounded-full border border-slate-400/80 bg-slate-100 text-[9px] font-bold leading-none text-slate-600 dark:border-slate-500 dark:bg-slate-800 dark:text-slate-300"
+        tabIndex={0}
+        role="img"
+        aria-label={hint}
+      >
+        ?
+        <span className="ecs-tooltip-bubble" role="tooltip">
+          {hint}
+        </span>
+      </span>
+    </span>
+  )
+}
+
 export default function App(): JSX.Element {
   const [themeMode, setThemeMode] = useState<ThemeMode>('system')
   const [visualStyle, setVisualStyle] = useState<VisualStyle>('clean')
-  const [colorScheme, setColorScheme] = useState<ColorScheme>('violet')
+  const [colorScheme, setColorScheme] = useState<ColorScheme>('default')
+  const [useThemeLayout, setUseThemeLayout] = useState<boolean>(true)
   const [systemDark, setSystemDark] = useState(false)
   const [isAuthed, setIsAuthed] = useState(false)
   const [authMode, setAuthMode] = useState<AuthMode>('login')
@@ -228,10 +275,18 @@ export default function App(): JSX.Element {
   }, [])
 
   const darkMode = themeMode === 'system' ? systemDark : themeMode === 'dark'
+  const currentMonth = new Date().getMonth() + 1
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode)
   }, [darkMode])
+
+  useEffect(() => {
+    document.documentElement.dataset.ecsPalette = colorScheme
+    document.documentElement.dataset.ecsTone = darkMode ? 'dark' : 'light'
+    document.documentElement.dataset.ecsMonth = String(currentMonth)
+    document.documentElement.dataset.ecsLayout = useThemeLayout ? 'themed' : 'default'
+  }, [colorScheme, darkMode, currentMonth, useThemeLayout])
 
   useEffect(() => {
     // Keep initialization hook for future auth provider bootstrap.
@@ -786,36 +841,522 @@ export default function App(): JSX.Element {
   const dndSpellSaveDc = 8 + dndProf + dndAbilityMod
   const dndSpellAttack = dndProf + dndAbilityMod
 
+  const loginMutedBtn = useMemo(() => {
+    if (colorScheme === 'default') {
+      return darkMode
+        ? 'border border-slate-700 bg-slate-800/80 text-slate-200 hover:bg-slate-700/90'
+        : 'border border-slate-300 bg-white text-slate-700 hover:bg-slate-50'
+    }
+    if (colorScheme === 'teal') {
+      return cn(
+        'border border-gray-700 bg-[#d4d0c8] text-gray-900 hover:bg-[#c8c4bc]',
+        'dark:border-gray-900 dark:bg-[#4a4a4a] dark:text-gray-100 dark:hover:bg-[#555]'
+      )
+    }
+    if (colorScheme === 'sunset') {
+      return darkMode
+        ? 'border border-cyan-500/35 bg-slate-950/55 text-slate-200 hover:bg-slate-900/75'
+        : 'border-2 border-pink-300 bg-white/80 text-indigo-950 hover:bg-white'
+    }
+    if (colorScheme === 'wii') {
+      return darkMode
+        ? 'border border-gray-600 bg-gray-700/85 text-gray-100 hover:bg-gray-600/95'
+        : 'border border-gray-400/85 bg-white/82 text-gray-800 hover:bg-white'
+    }
+    if (colorScheme === 'xmb') {
+      return 'border border-slate-600/70 bg-slate-800/65 text-slate-200 hover:bg-slate-700/85'
+    }
+    if (colorScheme === 'cube') {
+      return darkMode
+        ? 'border border-indigo-400/45 bg-indigo-950/60 text-indigo-100 hover:bg-indigo-900/70'
+        : 'border border-indigo-400/55 bg-white/90 text-indigo-950 hover:bg-white'
+    }
+    if (colorScheme === 'wiiu') {
+      return darkMode
+        ? 'border border-cyan-500/35 bg-slate-900/72 text-cyan-100 hover:bg-slate-800/80'
+        : 'border border-cyan-300/70 bg-white/86 text-cyan-900 hover:bg-white'
+    }
+    if (colorScheme === '3ds') {
+      return darkMode
+        ? 'border border-rose-500/35 bg-zinc-900/82 text-rose-100 hover:bg-zinc-800/90'
+        : 'border border-rose-300/80 bg-white/90 text-rose-900 hover:bg-white'
+    }
+    return 'border border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800/60'
+  }, [colorScheme, darkMode])
+
+  const scheme = useMemo(
+    () =>
+      (
+        {
+          default: {
+            grad: darkMode ? 'from-slate-950 via-slate-900 to-slate-950' : 'from-slate-50 via-white to-slate-100',
+            primary: darkMode
+              ? 'rounded-lg bg-slate-100 text-slate-900 font-semibold border border-slate-300/40 shadow-sm hover:bg-white'
+              : 'rounded-lg bg-slate-900 text-white font-semibold border border-slate-800 shadow-sm hover:bg-slate-800',
+            secondary: darkMode
+              ? 'rounded-lg bg-slate-800 text-slate-100 font-semibold border border-slate-600/45 shadow-sm hover:bg-slate-700'
+              : 'rounded-lg bg-slate-200 text-slate-900 font-semibold border border-slate-300 shadow-sm hover:bg-slate-100',
+            ring: darkMode ? 'ring-slate-300/55' : 'ring-slate-500/55'
+          },
+          violet: {
+            grad: 'from-sky-500 via-teal-500 to-lime-400',
+            primary:
+              'bg-gradient-to-b from-sky-400 to-sky-700 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] border border-sky-600/40',
+            secondary:
+              'bg-gradient-to-b from-teal-400 to-teal-700 text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.38)] border border-teal-700/35',
+            ring: 'ring-sky-400/75'
+          },
+          teal: {
+            grad: darkMode
+              ? 'from-[#000022] via-[#003d5c] to-[#006565]'
+              : 'from-[#000080] via-[#1084d0] to-[#008080]',
+            primary: darkMode
+              ? 'rounded-md bg-[#6f6f6f] text-white font-semibold shadow-[inset_-1px_-1px_0_#2f2f2f,inset_1px_1px_0_#a0a0a0] border border-black/35'
+              : 'rounded-md bg-[#ece9d8] text-[#000060] font-semibold shadow-[inset_-1px_-1px_0_#404040,inset_1px_1px_0_#ffffff] border border-black/25',
+            secondary: darkMode
+              ? 'rounded-md bg-[#5c5c5c] text-[#ecfeff] font-semibold shadow-[inset_-1px_-1px_0_#252525,inset_1px_1px_0_#888888] border border-black/35'
+              : 'rounded-md bg-[#d8d4c8] text-[#003049] font-semibold shadow-[inset_-1px_-1px_0_#505050,inset_1px_1px_0_#ffffff] border border-black/22',
+            ring: 'ring-[#1084d0]/70'
+          },
+          sunset: {
+            grad: darkMode
+              ? 'from-[#3b0764] via-[#86198f] to-[#155e75]'
+              : 'from-[#fffbeb] via-[#fbcfe8] to-[#a5f3fc]',
+            primary: darkMode
+              ? 'rounded-xl bg-gradient-to-r from-fuchsia-600 via-purple-600 to-cyan-500 text-white font-semibold border border-fuchsia-400/55 shadow-[0_0_26px_rgba(217,70,239,0.42)]'
+              : 'rounded-xl bg-gradient-to-r from-pink-500 via-fuchsia-600 to-orange-400 text-white font-semibold border-2 border-white/70 shadow-[0_10px_36px_rgba(219,39,119,0.35)]',
+            secondary: darkMode
+              ? 'rounded-xl bg-gradient-to-r from-cyan-500 to-teal-500 text-white font-semibold border border-cyan-300/40 shadow-[0_0_22px_rgba(34,211,238,0.35)]'
+              : 'rounded-xl bg-gradient-to-r from-sky-400 to-violet-600 text-white font-semibold border-2 border-cyan-200/80 shadow-lg',
+            ring: 'ring-fuchsia-400/75'
+          },
+          wii: {
+            grad: darkMode ? 'from-[#353943] via-[#4a505c] to-[#252830]' : 'from-[#f4f6fa] via-[#dce2ec] to-[#b9c2d1]',
+            primary:
+              'rounded-2xl bg-gradient-to-b from-[#7dd3fc] to-[#0284c7] text-white font-semibold border border-white/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.55),0_10px_28px_rgba(2,132,199,0.35)]',
+            secondary:
+              'rounded-2xl bg-gradient-to-b from-[#94a3b8] to-[#475569] text-white font-semibold border border-white/25 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)]',
+            ring: 'ring-sky-400/80'
+          },
+          xmb: {
+            grad: 'from-[#0c1628] via-[#152238] to-[#050910]',
+            primary:
+              'rounded-lg bg-gradient-to-r from-sky-400 to-blue-700 text-white font-semibold border border-sky-300/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.2),0_0_24px_rgba(56,189,248,0.22)]',
+            secondary:
+              'rounded-lg bg-gradient-to-b from-slate-600 to-slate-900 text-slate-50 font-semibold border border-slate-500/45 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]',
+            ring: 'ring-sky-400/70'
+          },
+          cube: {
+            grad: darkMode
+              ? 'from-[#060a19] via-[#1e3a8a] to-[#0f172a]'
+              : 'from-[#1e3a8a] via-[#3730a3] to-[#0f172a]',
+            primary:
+              'rounded-xl bg-gradient-to-r from-indigo-300 via-slate-100 to-indigo-200 text-indigo-950 font-bold border border-white/80 shadow-[0_0_28px_rgba(129,140,248,0.32)]',
+            secondary:
+              'rounded-xl bg-gradient-to-r from-indigo-700 to-slate-900 text-slate-100 font-semibold border border-indigo-300/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]',
+            ring: 'ring-indigo-300/80'
+          },
+          wiiu: {
+            grad: darkMode ? 'from-[#031525] via-[#0f2f3d] to-[#111827]' : 'from-[#e0f7ff] via-[#dbeafe] to-[#cffafe]',
+            primary:
+              'rounded-xl bg-gradient-to-r from-cyan-400 to-blue-600 text-white font-semibold border border-cyan-200/60 shadow-[0_8px_24px_rgba(14,116,144,0.28)]',
+            secondary:
+              'rounded-xl bg-gradient-to-r from-slate-500 to-slate-700 text-white font-semibold border border-slate-300/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]',
+            ring: 'ring-cyan-300/75'
+          },
+          '3ds': {
+            grad: darkMode ? 'from-[#3f0a0a] via-[#18181b] to-[#7f1d1d]' : 'from-[#fff1f2] via-[#ffe4e6] to-[#fee2e2]',
+            primary:
+              'rounded-md bg-gradient-to-b from-rose-500 to-rose-700 text-white font-semibold border border-rose-300/60 shadow-[inset_0_1px_0_rgba(255,255,255,0.4)]',
+            secondary:
+              'rounded-md bg-gradient-to-b from-zinc-500 to-zinc-700 text-white font-semibold border border-zinc-300/35 shadow-[inset_0_1px_0_rgba(255,255,255,0.2)]',
+            ring: 'ring-rose-300/75'
+          }
+        } as const
+      )[colorScheme],
+    [colorScheme, darkMode]
+  )
+
+  const headerChrome = useMemo(() => {
+    if (colorScheme === 'default') {
+      return cn(
+        'relative mb-6 rounded-2xl border p-5 motion-safe:animate-ecs-fade-up',
+        darkMode
+          ? 'border-slate-700 bg-slate-900 text-slate-100 shadow-sm'
+          : 'border-slate-200 bg-white text-slate-900 shadow-sm'
+      )
+    }
+    if (colorScheme === 'teal') {
+      return cn(
+        'ecs-win98-window relative mb-6 rounded-md border border-black/55 p-5 pt-6 motion-safe:animate-ecs-fade-up',
+        darkMode ? 'border-black/60 bg-[#545454] text-zinc-100 shadow-[4px_4px_0_rgba(0,0,0,0.35)]' : 'bg-[#ece9d8] text-gray-900 shadow-[4px_4px_0_rgba(0,0,0,0.12)]'
+      )
+    }
+    if (colorScheme === 'sunset') {
+      return cn(
+        'ecs-shape-banner relative mb-6 rounded-[1.35rem] border-2 p-5 backdrop-blur-md motion-safe:animate-ecs-fade-up ecs-header-y2k',
+        darkMode
+          ? 'border-cyan-400/50 bg-slate-950/88 text-slate-100 shadow-[0_0_38px_rgba(34,211,238,0.14)]'
+          : 'border-pink-400/80 bg-gradient-to-br from-amber-50 via-white to-fuchsia-100 text-indigo-950 shadow-xl'
+      )
+    }
+    if (colorScheme === 'wii') {
+      return cn(
+        'relative mb-6 rounded-[2rem] border p-5 motion-safe:animate-ecs-fade-up backdrop-blur-md',
+        darkMode
+          ? 'border-gray-600/55 bg-gray-800/92 text-gray-100 shadow-[0_14px_44px_rgba(0,0,0,0.38)]'
+          : 'border-white/75 bg-white/88 text-gray-900 shadow-[0_16px_48px_rgba(15,23,42,0.08)]'
+      )
+    }
+    if (colorScheme === 'xmb') {
+      return cn(
+        'relative mb-6 rounded-xl border border-slate-700/60 bg-gradient-to-b from-slate-900/96 to-slate-950/98 p-5 text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] motion-safe:animate-ecs-fade-up',
+        !darkMode && 'from-slate-800/96 to-slate-900/98 text-slate-50'
+      )
+    }
+    if (colorScheme === 'cube') {
+      return cn(
+        'relative mb-6 rounded-[1.1rem] border border-indigo-300/35 bg-gradient-to-r from-[#1f2a44]/96 via-[#1e3a8a]/82 to-[#0f172a]/94 p-5 text-slate-100 shadow-[0_0_26px_rgba(129,140,248,0.2)] motion-safe:animate-ecs-fade-up'
+      )
+    }
+    if (colorScheme === 'wiiu') {
+      return cn(
+        'relative mb-6 rounded-2xl border p-5 backdrop-blur-md motion-safe:animate-ecs-fade-up',
+        darkMode
+          ? 'border-cyan-400/40 bg-slate-900/88 text-cyan-50 shadow-[0_10px_35px_rgba(6,78,99,0.32)]'
+          : 'border-cyan-200/80 bg-white/90 text-cyan-900 shadow-[0_10px_30px_rgba(14,116,144,0.12)]'
+      )
+    }
+    if (colorScheme === '3ds') {
+      return cn(
+        'relative mb-6 rounded-lg border p-5 motion-safe:animate-ecs-fade-up',
+        darkMode
+          ? 'border-rose-500/45 bg-zinc-900/92 text-rose-50 shadow-[0_8px_26px_rgba(127,29,29,0.32)]'
+          : 'border-rose-300/80 bg-white/94 text-rose-900 shadow-[0_8px_22px_rgba(244,63,94,0.15)]'
+      )
+    }
+    return 'ecs-shape-banner ecs-diagonal-strip relative mb-6 rounded-[1.75rem] border border-cyan-300/55 bg-white/82 p-5 shadow-aero-float backdrop-blur-md motion-safe:animate-ecs-fade-up dark:border-teal-800/55 dark:bg-slate-900/78'
+  }, [colorScheme, darkMode])
+
   const cardClass =
     visualStyle === 'parchment'
       ? 'ecs-shape-card ecs-shape-soft motion-safe:transition-shadow motion-safe:duration-300 motion-safe:hover:shadow-lg motion-safe:hover:ring-1 motion-safe:hover:ring-amber-400/25 dark:motion-safe:hover:ring-amber-500/20 border-amber-300/70 bg-amber-50/95 dark:border-amber-600/30 dark:bg-[#302519] dark:text-amber-50'
-      : 'ecs-shape-card ecs-shape-soft motion-safe:transition-shadow motion-safe:duration-300 motion-safe:hover:shadow-lg motion-safe:hover:ring-1 motion-safe:hover:ring-cyan-300/55 dark:motion-safe:hover:ring-teal-600/45 border-cyan-200/75 bg-white/88 shadow-aero-card backdrop-blur-md dark:border-teal-900/55 dark:bg-slate-900/88 dark:shadow-aero-card-dark'
-  const scheme = {
-    violet: {
-      grad: 'from-sky-500 via-teal-500 to-lime-400',
-      primary:
-        'bg-gradient-to-b from-sky-400 to-sky-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)] border border-sky-600/40',
-      secondary:
-        'bg-gradient-to-b from-teal-400 to-teal-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.38)] border border-teal-700/35',
-      ring: 'ring-sky-400/75'
-    },
-    teal: {
-      grad: 'from-cyan-500 via-sky-500 to-emerald-400',
-      primary:
-        'bg-gradient-to-b from-cyan-400 to-cyan-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.42)] border border-cyan-700/45',
-      secondary:
-        'bg-gradient-to-b from-emerald-400 to-emerald-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] border border-emerald-800/35',
-      ring: 'ring-cyan-400/75'
-    },
-    sunset: {
-      grad: 'from-amber-400 via-orange-500 to-fuchsia-500',
-      primary:
-        'bg-gradient-to-b from-orange-400 to-orange-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.48)] border border-orange-700/40',
-      secondary:
-        'bg-gradient-to-b from-fuchsia-500 to-pink-700 shadow-[inset_0_1px_0_rgba(255,255,255,0.35)] border border-pink-800/35',
-      ring: 'ring-orange-400/75'
+      : colorScheme === 'default'
+        ? cn(
+            'motion-safe:transition-shadow motion-safe:duration-300 rounded-xl',
+            darkMode
+              ? 'border border-slate-700 bg-slate-900 text-slate-100 shadow-sm'
+              : 'border border-slate-200 bg-white text-slate-900 shadow-sm'
+          )
+        : colorScheme === 'violet'
+        ? 'ecs-shape-card ecs-shape-soft motion-safe:transition-shadow motion-safe:duration-300 motion-safe:hover:shadow-lg motion-safe:hover:ring-1 motion-safe:hover:ring-cyan-300/55 dark:motion-safe:hover:ring-teal-600/45 border-cyan-200/75 bg-white/88 shadow-aero-card backdrop-blur-md dark:border-teal-900/55 dark:bg-slate-900/88 dark:shadow-aero-card-dark'
+        : colorScheme === 'teal'
+          ? 'ecs-shape-card ecs-shape-soft ecs-panel-teal motion-safe:transition-[filter] motion-safe:duration-200 hover:brightness-[1.02]'
+          : colorScheme === 'sunset'
+            ? cn(
+                'ecs-shape-card ecs-shape-soft motion-safe:transition-shadow motion-safe:duration-300 backdrop-blur-md',
+                darkMode
+                  ? 'border-2 border-fuchsia-500/55 bg-slate-950/93 text-slate-100 shadow-[0_0_28px_rgba(217,70,239,0.22),inset_0_1px_0_rgba(255,255,255,0.06)]'
+                  : 'border-2 border-pink-400/90 bg-amber-50/96 text-indigo-950 shadow-[0_12px_40px_rgba(236,72,153,0.22)]'
+              )
+            : colorScheme === 'wii'
+              ? cn(
+                  'motion-safe:transition-shadow motion-safe:duration-300 rounded-[1.75rem] backdrop-blur-md',
+                  darkMode
+                    ? 'border border-gray-600/65 bg-gray-800/93 shadow-[0_16px_48px_rgba(0,0,0,0.4)]'
+                    : 'border border-white/85 bg-white/93 shadow-[0_18px_52px_rgba(15,23,42,0.07)]'
+                )
+              : colorScheme === 'xmb'
+                ? cn(
+                    'motion-safe:transition-shadow motion-safe:duration-300 rounded-xl backdrop-blur-md',
+                    darkMode
+                      ? 'border border-slate-600/55 bg-slate-900/94 text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.05),0_12px_38px_rgba(0,0,0,0.42)]'
+                      : 'border border-slate-600/50 bg-slate-800/93 text-slate-100 shadow-[0_14px_40px_rgba(15,23,42,0.32)]'
+                  )
+                : colorScheme === 'cube'
+                  ? cn(
+                      'motion-safe:transition-shadow motion-safe:duration-300 rounded-xl backdrop-blur-md',
+                      darkMode
+                        ? 'border border-indigo-400/45 bg-[#111827]/96 text-slate-100 shadow-[0_0_28px_rgba(99,102,241,0.18)]'
+                        : 'border border-indigo-300/55 bg-gradient-to-br from-slate-100 via-white to-indigo-100 text-indigo-950 shadow-[0_14px_42px_rgba(30,64,175,0.14)]'
+                    )
+                  : colorScheme === 'wiiu'
+                    ? cn(
+                        'motion-safe:transition-shadow motion-safe:duration-300 rounded-2xl backdrop-blur-md',
+                        darkMode
+                          ? 'border border-cyan-500/45 bg-slate-900/94 text-cyan-50 shadow-[0_0_26px_rgba(34,211,238,0.16)]'
+                          : 'border border-cyan-200/85 bg-white/94 text-cyan-900 shadow-[0_12px_36px_rgba(14,116,144,0.12)]'
+                      )
+                    : cn(
+                    'motion-safe:transition-shadow motion-safe:duration-300 rounded-xl backdrop-blur-md',
+                    darkMode
+                      ? 'border border-rose-500/40 bg-zinc-900/96 text-rose-50 shadow-[0_0_24px_rgba(225,29,72,0.18)]'
+                      : 'border border-rose-300/80 bg-rose-50/95 text-rose-900 shadow-[0_12px_34px_rgba(244,63,94,0.14)]'
+                    )
+
+  const shellText = useMemo(() => {
+    if (colorScheme === 'default') return darkMode ? 'text-slate-100' : 'text-slate-900'
+    if (colorScheme === 'teal') return darkMode ? 'text-zinc-100' : 'text-gray-900'
+    if (colorScheme === 'sunset') return darkMode ? 'text-slate-100' : 'text-indigo-950'
+    if (colorScheme === 'wii') return darkMode ? 'text-gray-100' : 'text-gray-900'
+    if (colorScheme === 'xmb') return 'text-slate-100'
+    if (colorScheme === 'cube') return darkMode ? 'text-slate-100' : 'text-indigo-950'
+    if (colorScheme === 'wiiu') return darkMode ? 'text-cyan-50' : 'text-cyan-900'
+    if (colorScheme === '3ds') return darkMode ? 'text-rose-50' : 'text-rose-900'
+    return 'text-slate-900 dark:text-slate-100'
+  }, [colorScheme, darkMode])
+
+  const loginIntroMuted = useMemo(
+    () =>
+      colorScheme === 'default'
+        ? 'text-slate-600 dark:text-slate-400'
+        : colorScheme === 'teal'
+        ? 'text-gray-700 dark:text-gray-300'
+        : colorScheme === 'sunset'
+          ? darkMode
+            ? 'text-slate-300'
+            : 'text-indigo-900/75'
+          : colorScheme === 'wii'
+            ? darkMode
+              ? 'text-gray-400'
+              : 'text-gray-600'
+            : colorScheme === 'xmb'
+              ? 'text-slate-400'
+              : colorScheme === 'cube'
+                ? darkMode
+                  ? 'text-slate-300'
+                  : 'text-indigo-900/75'
+                : colorScheme === 'wiiu'
+                  ? darkMode
+                    ? 'text-cyan-200/80'
+                    : 'text-cyan-900/75'
+                  : colorScheme === '3ds'
+                    ? darkMode
+                      ? 'text-rose-200/80'
+                      : 'text-rose-900/75'
+                : 'text-slate-500 dark:text-slate-400',
+    [colorScheme, darkMode]
+  )
+
+  const loginHeroTypography = useMemo(() => {
+    if (colorScheme === 'default') {
+      return {
+        badge: darkMode ? 'text-slate-400' : 'text-slate-600',
+        title: darkMode ? 'text-slate-100 drop-shadow-none' : 'text-slate-900 drop-shadow-none',
+        body: darkMode ? 'text-slate-300 drop-shadow-none' : 'text-slate-600 drop-shadow-none'
+      }
     }
-  }[colorScheme]
+    if (!darkMode && colorScheme === 'sunset') {
+      return {
+        badge: 'text-indigo-950/90',
+        title: 'text-indigo-950 drop-shadow-none',
+        body: 'text-indigo-950/85 drop-shadow-none'
+      }
+    }
+    if (!darkMode && colorScheme === 'wii') {
+      return {
+        badge: 'text-gray-700/90 drop-shadow-sm',
+        title: 'text-gray-900 drop-shadow-sm',
+        body: 'text-gray-800/90 drop-shadow-sm'
+      }
+    }
+    if (!darkMode && colorScheme === 'wiiu') {
+      return {
+        badge: 'text-cyan-800/90 drop-shadow-sm',
+        title: 'text-cyan-900 drop-shadow-none',
+        body: 'text-cyan-900/85 drop-shadow-none'
+      }
+    }
+    if (!darkMode && colorScheme === '3ds') {
+      return {
+        badge: 'text-rose-800/90 drop-shadow-sm',
+        title: 'text-rose-900 drop-shadow-none',
+        body: 'text-rose-900/85 drop-shadow-none'
+      }
+    }
+    return {
+      badge: 'text-white/85',
+      title: 'drop-shadow-md',
+      body: 'text-white/92 drop-shadow'
+    }
+  }, [colorScheme, darkMode])
+
+  const headerSubtitleClass = useMemo(() => {
+    if (colorScheme === 'default') return 'text-slate-500 dark:text-slate-400'
+    if (colorScheme === 'teal') return 'text-gray-600 dark:text-gray-400'
+    if (colorScheme === 'sunset') return 'text-slate-600 dark:text-slate-400'
+    if (colorScheme === 'wii') return 'text-gray-600 dark:text-gray-400'
+    if (colorScheme === 'xmb') return 'text-slate-400'
+    if (colorScheme === 'cube') return 'text-slate-300/90 dark:text-slate-300/90'
+    if (colorScheme === 'wiiu') return 'text-cyan-700 dark:text-cyan-200'
+    if (colorScheme === '3ds') return 'text-rose-700 dark:text-rose-200'
+    return 'text-slate-500 dark:text-slate-400'
+  }, [colorScheme, darkMode])
+
+  const workspaceShellClass = useMemo(() => {
+    if (!useThemeLayout) return 'max-w-7xl px-5 py-7'
+    if (colorScheme === 'default') return 'max-w-7xl px-5 py-7'
+    if (colorScheme === 'wiiu') return 'max-w-[88rem] px-6 py-8'
+    if (colorScheme === '3ds') return 'max-w-3xl px-4 py-6'
+    if (colorScheme === 'xmb') return 'max-w-[84rem] px-6 py-7'
+    if (colorScheme === 'sunset') return 'max-w-5xl px-5 py-7'
+    if (colorScheme === 'cube') return 'max-w-6xl px-5 py-7'
+    return 'max-w-7xl px-5 py-7'
+  }, [colorScheme, useThemeLayout])
+
+  const workspaceGridClass = 'ecs-workspace-grid motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:110ms]'
+
+  const characterRowSelected = useMemo(
+    () =>
+      colorScheme === 'default'
+        ? 'border-slate-500 bg-slate-100 text-slate-900 dark:border-slate-400 dark:bg-slate-800 dark:text-slate-50'
+        : colorScheme === 'violet'
+        ? 'border-sky-500 bg-sky-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-sky-400 dark:bg-sky-950/35'
+        : colorScheme === 'teal'
+          ? 'border-[#000080] bg-[#000080] text-white shadow-[inset_2px_2px_6px_rgba(0,0,0,0.35)] dark:border-[#7cb9ff] dark:bg-[#003366] dark:text-white'
+          : colorScheme === 'wii'
+            ? 'border-sky-500 bg-white shadow-[0_8px_22px_rgba(14,165,233,0.22)] dark:border-sky-400 dark:bg-gray-700/90 dark:text-gray-50 dark:shadow-[0_8px_24px_rgba(56,189,248,0.18)]'
+            : colorScheme === 'xmb'
+              ? 'border-sky-400 bg-slate-800/95 text-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.08),0_0_18px_rgba(56,189,248,0.2)]'
+              : colorScheme === 'cube'
+                ? 'border-indigo-300 bg-slate-100/90 text-indigo-950 shadow-[0_0_20px_rgba(129,140,248,0.2)] dark:border-indigo-300 dark:bg-slate-800/85 dark:text-slate-100'
+                : colorScheme === 'wiiu'
+                  ? 'border-cyan-300 bg-cyan-50 text-cyan-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-cyan-300 dark:bg-cyan-950/35 dark:text-cyan-50'
+                  : colorScheme === '3ds'
+                    ? 'border-rose-400 bg-rose-50 text-rose-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)] dark:border-rose-400 dark:bg-rose-950/30 dark:text-rose-50'
+                    : darkMode
+                      ? 'border-cyan-400 bg-fuchsia-950/40 text-slate-50 shadow-[0_0_16px_rgba(34,211,238,0.18)]'
+                      : 'border-fuchsia-500 bg-pink-50 text-indigo-950 shadow-[inset_0_1px_0_rgba(255,255,255,0.9)]',
+    [colorScheme, darkMode]
+  )
+
+  const statusPill = useMemo(
+    () =>
+      colorScheme === 'default'
+        ? 'rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 shadow-sm motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03] dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300'
+        : colorScheme === 'violet'
+        ? 'rounded-full border border-cyan-200/75 bg-white/85 px-3 py-1 text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03] dark:border-teal-800/70 dark:bg-slate-900/65 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]'
+        : colorScheme === 'teal'
+          ? 'rounded-md border border-black/35 bg-[#ece9d8] px-3 py-1 text-xs font-medium text-gray-900 shadow-[inset_-1px_-1px_0_#404040,inset_1px_1px_0_#ffffff] motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.02] dark:bg-[#5a5a5a] dark:text-gray-100 dark:shadow-[inset_-1px_-1px_0_#222,inset_1px_1px_0_#888]'
+          : colorScheme === 'wii'
+            ? 'rounded-full border border-gray-400/60 bg-white/92 px-3 py-1 text-xs text-gray-800 shadow-sm motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03] dark:border-gray-600 dark:bg-gray-700/90 dark:text-gray-100'
+            : colorScheme === 'xmb'
+              ? 'rounded-md border border-slate-600 bg-slate-800/90 px-3 py-1 text-xs text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.02]'
+              : colorScheme === 'cube'
+                ? 'rounded-full border border-indigo-300/60 bg-white/90 px-3 py-1 text-xs text-indigo-950 shadow-[0_0_14px_rgba(129,140,248,0.16)] motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03] dark:border-indigo-300/65 dark:bg-slate-800/80 dark:text-slate-100'
+                : colorScheme === 'wiiu'
+                  ? 'rounded-full border border-cyan-300/65 bg-white/90 px-3 py-1 text-xs text-cyan-900 shadow-sm motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03] dark:border-cyan-300/60 dark:bg-cyan-950/45 dark:text-cyan-50'
+                  : colorScheme === '3ds'
+                    ? 'rounded-md border border-rose-300/75 bg-white/92 px-3 py-1 text-xs text-rose-900 shadow-sm motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03] dark:border-rose-300/60 dark:bg-rose-950/45 dark:text-rose-50'
+                    : cn(
+                        'rounded-full border-2 px-3 py-1 text-xs font-medium motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03]',
+                        darkMode
+                          ? 'border-cyan-400/45 bg-slate-950/70 text-slate-100 shadow-[0_0_18px_rgba(34,211,238,0.15)]'
+                          : 'border-pink-400/85 bg-white/90 text-indigo-950 shadow-md'
+                      ),
+    [colorScheme, darkMode]
+  )
+
+  const loginOuterChrome = useMemo(() => {
+    if (colorScheme === 'default') {
+      return darkMode
+        ? 'rounded-2xl border border-slate-700 bg-slate-900 p-4 shadow-md motion-safe:animate-ecs-fade-up'
+        : 'rounded-2xl border border-slate-200 bg-white p-4 shadow-md motion-safe:animate-ecs-fade-up'
+    }
+    if (colorScheme === 'teal') {
+      return 'rounded-lg border border-black/55 bg-[#c0c0c0]/88 p-4 shadow-[8px_8px_0_rgba(0,0,0,0.14)] motion-safe:animate-ecs-fade-up dark:border-black/65 dark:bg-[#404040]/92 dark:shadow-[6px_6px_0_rgba(0,0,0,0.45)]'
+    }
+    if (colorScheme === 'sunset') {
+      return cn(
+        'rounded-[2rem] border-2 p-4 backdrop-blur-xl motion-safe:animate-ecs-fade-up',
+        darkMode
+          ? 'border-fuchsia-500/50 bg-slate-950/55 shadow-[0_0_40px_rgba(217,70,239,0.12)]'
+          : 'border-pink-400/85 bg-white/55 shadow-xl'
+      )
+    }
+    if (colorScheme === 'wii') {
+      return cn(
+        'rounded-[2.25rem] border p-4 backdrop-blur-xl motion-safe:animate-ecs-fade-up',
+        darkMode ? 'border-gray-600/50 bg-gray-900/45 shadow-[0_20px_55px_rgba(0,0,0,0.45)]' : 'border-white/70 bg-white/48 shadow-[0_22px_58px_rgba(15,23,42,0.09)]'
+      )
+    }
+    if (colorScheme === 'xmb') {
+      return 'rounded-2xl border border-slate-700/55 bg-slate-950/45 p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] backdrop-blur-xl motion-safe:animate-ecs-fade-up'
+    }
+    if (colorScheme === 'cube') {
+      return cn(
+        'rounded-[2rem] border p-4 backdrop-blur-xl motion-safe:animate-ecs-fade-up',
+        darkMode ? 'border-indigo-400/35 bg-slate-900/40 shadow-[0_0_32px_rgba(99,102,241,0.16)]' : 'border-indigo-300/50 bg-white/60 shadow-xl'
+      )
+    }
+    if (colorScheme === 'wiiu') {
+      return cn(
+        'rounded-[1.6rem] border p-4 backdrop-blur-xl motion-safe:animate-ecs-fade-up',
+        darkMode ? 'border-cyan-500/35 bg-slate-900/45 shadow-[0_0_30px_rgba(34,211,238,0.14)]' : 'border-cyan-200/75 bg-white/58 shadow-xl'
+      )
+    }
+    if (colorScheme === '3ds') {
+      return cn(
+        'rounded-lg border p-4 backdrop-blur-xl motion-safe:animate-ecs-fade-up',
+        darkMode ? 'border-rose-500/35 bg-zinc-900/52 shadow-[0_0_28px_rgba(244,63,94,0.15)]' : 'border-rose-200/80 bg-white/65 shadow-xl'
+      )
+    }
+    return 'rounded-[2rem] border border-cyan-300/45 bg-white/40 p-4 shadow-aero-float backdrop-blur-xl motion-safe:animate-ecs-fade-up dark:border-teal-800/45 dark:bg-slate-950/45'
+  }, [colorScheme, darkMode])
+
+  const loginSignPanel = useMemo(() => {
+    if (colorScheme === 'default') {
+      return cn(
+        'rounded-xl border p-6 motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:90ms]',
+        darkMode
+          ? 'border-slate-700 bg-slate-900 text-slate-100 shadow-sm'
+          : 'border-slate-200 bg-white text-slate-900 shadow-sm'
+      )
+    }
+    if (colorScheme === 'teal') {
+      return 'ecs-panel-teal rounded-md p-6 motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:90ms]'
+    }
+    if (colorScheme === 'sunset') {
+      return cn(
+        'rounded-[1.75rem] border-2 p-6 motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:90ms]',
+        darkMode
+          ? 'border-cyan-400/50 bg-slate-950/82 text-slate-100 shadow-[0_0_28px_rgba(34,211,238,0.12)]'
+          : 'border-pink-400/90 bg-white/88 text-indigo-950 shadow-lg'
+      )
+    }
+    if (colorScheme === 'wii') {
+      return cn(
+        'rounded-[1.85rem] border p-6 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:90ms]',
+        darkMode ? 'border-gray-600/55 bg-gray-800/92 text-gray-100' : 'border-white/80 bg-white/90 text-gray-900'
+      )
+    }
+    if (colorScheme === 'xmb') {
+      return cn(
+        'rounded-xl border border-slate-600/60 bg-slate-900/88 p-6 text-slate-100 shadow-[inset_0_1px_0_rgba(255,255,255,0.06)] motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:90ms]'
+      )
+    }
+    if (colorScheme === 'cube') {
+      return cn(
+        'rounded-[1.1rem] border p-6 motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:90ms]',
+        darkMode
+          ? 'border-indigo-400/45 bg-slate-900/90 text-slate-100 shadow-[0_0_22px_rgba(99,102,241,0.14)]'
+          : 'border-indigo-300/60 bg-white/92 text-indigo-950 shadow-lg'
+      )
+    }
+    if (colorScheme === 'wiiu') {
+      return cn(
+        'rounded-[1.25rem] border p-6 motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:90ms]',
+        darkMode ? 'border-cyan-500/45 bg-slate-900/86 text-cyan-50 shadow-[0_0_24px_rgba(34,211,238,0.12)]' : 'border-cyan-200/85 bg-white/92 text-cyan-900 shadow-lg'
+      )
+    }
+    if (colorScheme === '3ds') {
+      return cn(
+        'rounded-md border p-6 motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:90ms]',
+        darkMode ? 'border-rose-500/45 bg-zinc-900/90 text-rose-50 shadow-[0_0_22px_rgba(244,63,94,0.12)]' : 'border-rose-200/85 bg-white/94 text-rose-900 shadow-lg'
+      )
+    }
+    return 'ecs-aero-glass-panel rounded-[1.75rem] border border-white/70 bg-white/82 p-6 motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:90ms] dark:border-white/10 dark:bg-slate-900/82'
+  }, [colorScheme, darkMode])
 
   function updateBattleDraft(
     characterId: string,
@@ -912,38 +1453,131 @@ export default function App(): JSX.Element {
 
   if (!isAuthed) {
     return (
-      <div className="ecs-aero-login-shell min-h-screen px-4 py-6 text-slate-900 dark:text-slate-100">
-        <div className="mx-auto grid min-h-[calc(100vh-3rem)] w-full max-w-6xl grid-rows-1 gap-4 rounded-[2rem] border border-cyan-300/45 bg-white/40 p-4 shadow-aero-float backdrop-blur-xl motion-safe:animate-ecs-fade-up dark:border-teal-800/45 dark:bg-slate-950/45 lg:grid-cols-[1.1fr_0.9fr]">
+      <div className={cn('ecs-theme-shell ecs-aero-login-shell min-h-screen px-4 py-6 leading-relaxed', shellText)}>
+        <div
+          className={cn(
+            'mx-auto grid min-h-[calc(100vh-3rem)] w-full max-w-6xl grid-rows-1 gap-4 lg:grid-cols-[1.1fr_0.9fr]',
+            loginOuterChrome
+          )}
+        >
           <section
             className={cn(
-              'ecs-shape-banner ecs-diagonal-strip relative flex min-h-0 flex-col overflow-hidden rounded-[1.75rem] bg-gradient-to-br p-7 text-white shadow-aero-float',
-              scheme.grad
+              'relative flex min-h-0 flex-col overflow-hidden bg-gradient-to-br p-7 shadow-aero-float',
+              colorScheme === 'violet' && 'ecs-shape-banner ecs-diagonal-strip rounded-[1.75rem]',
+              colorScheme === 'teal' &&
+                'rounded-md border border-black/50 shadow-[4px_4px_0_rgba(0,0,0,0.14)] dark:border-black/55 dark:shadow-[4px_4px_0_rgba(0,0,0,0.35)]',
+              colorScheme === 'sunset' && 'ecs-shape-banner ecs-diagonal-strip rounded-[1.75rem]',
+              colorScheme === 'wii' &&
+                'rounded-[2rem] border border-white/55 shadow-[inset_0_1px_0_rgba(255,255,255,0.88)] dark:border-gray-600/45',
+              colorScheme === 'xmb' &&
+                'rounded-xl border border-slate-700/55 shadow-[inset_0_0_48px_rgba(0,0,0,0.35)]',
+              colorScheme === 'cube' &&
+                'rounded-[1.2rem] border border-indigo-300/45 shadow-[0_0_34px_rgba(99,102,241,0.24)] dark:border-indigo-400/35',
+              colorScheme === 'wiiu' &&
+                'rounded-[1.5rem] border border-cyan-200/55 shadow-[0_0_30px_rgba(34,211,238,0.22)] dark:border-cyan-500/35',
+              colorScheme === '3ds' &&
+                'rounded-md border border-rose-300/70 shadow-[0_0_26px_rgba(244,63,94,0.22)] dark:border-rose-500/35',
+              colorScheme === 'default' &&
+                'rounded-2xl border border-slate-200 shadow-md dark:border-slate-700',
+              scheme.grad,
+              !darkMode && colorScheme === 'sunset' && 'text-indigo-950',
+              !darkMode && colorScheme === 'wii' && 'text-gray-900',
+              !darkMode && colorScheme === 'wiiu' && 'text-cyan-900',
+              !darkMode && colorScheme === '3ds' && 'text-rose-900',
+              !darkMode && colorScheme === 'default' && 'text-slate-900',
+              (darkMode || !['sunset', 'wii', 'wiiu', '3ds', 'default'].includes(colorScheme)) && 'text-white'
             )}
           >
-            <div
-              className="pointer-events-none absolute -right-24 top-8 h-56 w-56 rounded-[58%_42%_55%_45%] bg-white/25 blur-2xl motion-safe:animate-ecs-aero-float"
-              aria-hidden
-            />
-            <div
-              className="pointer-events-none absolute -bottom-16 -left-12 h-48 w-72 rotate-12 rounded-[45%_55%_48%_52%] bg-lime-300/25 blur-2xl motion-safe:animate-ecs-aero-float"
-              style={{ animationDelay: '-7s' }}
-              aria-hidden
-            />
+            {colorScheme === 'violet' ? (
+              <>
+                <div
+                  className="pointer-events-none absolute -right-24 top-8 h-56 w-56 rounded-[58%_42%_55%_45%] bg-white/25 blur-2xl motion-safe:animate-ecs-aero-float"
+                  aria-hidden
+                />
+                <div
+                  className="pointer-events-none absolute -bottom-16 -left-12 h-48 w-72 rotate-12 rounded-[45%_55%_48%_52%] bg-lime-300/25 blur-2xl motion-safe:animate-ecs-aero-float"
+                  style={{ animationDelay: '-7s' }}
+                  aria-hidden
+                />
+              </>
+            ) : null}
+            {colorScheme === 'teal' ? (
+              <div
+                className="pointer-events-none absolute inset-0 opacity-[0.14] motion-safe:animate-ecs-aero-ribbon"
+                style={{
+                  background:
+                    'repeating-linear-gradient(-12deg, transparent, transparent 14px, rgba(255,255,255,0.35) 14px, rgba(255,255,255,0.35) 16px)'
+                }}
+                aria-hidden
+              />
+            ) : null}
+            {colorScheme === 'sunset' ? (
+              <>
+                <div
+                  className="pointer-events-none absolute -left-10 top-1/4 h-44 w-44 rounded-full bg-fuchsia-400/30 blur-3xl motion-safe:animate-ecs-aero-float dark:bg-fuchsia-600/20"
+                  aria-hidden
+                />
+                <div
+                  className="pointer-events-none absolute -bottom-8 right-0 h-52 w-52 rounded-full bg-cyan-400/25 blur-3xl motion-safe:animate-ecs-aero-float dark:bg-cyan-500/15"
+                  style={{ animationDelay: '-9s' }}
+                  aria-hidden
+                />
+              </>
+            ) : null}
+            {colorScheme === 'wii' ? (
+              <>
+                <div
+                  className="ecs-wii-shine-bubble pointer-events-none -left-[12%] top-[18%] h-56 w-56 motion-safe:animate-ecs-wii-drift"
+                  aria-hidden
+                />
+                <div
+                  className="ecs-wii-shine-bubble pointer-events-none bottom-[8%] right-[-8%] h-48 w-72 opacity-30 motion-safe:animate-ecs-wii-drift"
+                  style={{ animationDelay: '-8s' }}
+                  aria-hidden
+                />
+              </>
+            ) : null}
+            {colorScheme === 'xmb' ? (
+              <>
+                <div
+                  className="ecs-xmb-wave-layer motion-safe:animate-ecs-xmb-wave pointer-events-none"
+                  aria-hidden
+                />
+                <div className="ecs-xmb-login-sheen motion-safe:animate-ecs-xmb-wave pointer-events-none" aria-hidden />
+              </>
+            ) : null}
+            {colorScheme === 'cube' ? (
+              <>
+                <div className="ecs-cube-lime-pulse pointer-events-none motion-safe:animate-ecs-aero-float" aria-hidden />
+                <div
+                  className="pointer-events-none absolute right-[12%] top-[14%] h-36 w-36 rotate-12 rounded-3xl border border-white/15 bg-white/5 blur-[1px]"
+                  aria-hidden
+                />
+              </>
+            ) : null}
+            {colorScheme === 'wiiu' ? (
+              <div className="ecs-wiiu-bar pointer-events-none motion-safe:animate-ecs-aero-ribbon" aria-hidden />
+            ) : null}
+            {colorScheme === '3ds' ? (
+              <div className="ecs-3ds-hinge pointer-events-none" aria-hidden />
+            ) : null}
             <div className="relative shrink-0">
-              <div className="text-xs font-semibold uppercase tracking-[0.25em] text-white/85 drop-shadow-md">
+              <div className={cn('text-xs font-semibold uppercase tracking-[0.25em]', loginHeroTypography.badge)}>
                 EPIC CHARACTER STORAGE
               </div>
-              <h1 className="mt-4 text-4xl font-bold leading-tight drop-shadow-md">Welcome back</h1>
-              <p className="mt-3 max-w-xl text-sm leading-relaxed text-white/92 drop-shadow">
+              <h1 className={cn('mt-4 text-4xl font-bold leading-tight', loginHeroTypography.title)}>
+                Welcome back
+              </h1>
+              <p className={cn('mt-3 max-w-xl text-sm leading-relaxed', loginHeroTypography.body)}>
                 Build, organize, and run your campaign sheets in one place. Login is required each time you open the app.
               </p>
             </div>
             <LoginUpdateLog className="relative mt-6 min-h-0 flex-1" />
           </section>
 
-          <section className="ecs-aero-glass-panel rounded-[1.75rem] border border-white/70 bg-white/82 p-6 motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:90ms] dark:border-white/10 dark:bg-slate-900/82">
-            <h2 className="text-2xl font-bold">Sign in</h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          <section className={loginSignPanel}>
+            <h2 className="text-2xl font-bold tracking-tight">Sign in</h2>
+            <p className={cn('mt-1 text-sm leading-relaxed', loginIntroMuted)}>
               Use your account email and password.
             </p>
 
@@ -954,10 +1588,9 @@ export default function App(): JSX.Element {
                   type="button"
                   onClick={() => setAuthMode(mode)}
                   className={cn(
-                    'ecs-interactive rounded-lg px-3 py-1.5 text-xs font-semibold uppercase motion-safe:active:scale-[0.98]',
-                    authMode === mode
-                      ? cn(scheme.primary, 'text-white')
-                      : 'border border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800/60'
+                    'ecs-interactive px-3 py-1.5 text-xs font-semibold uppercase motion-safe:active:scale-[0.98]',
+                    ecsAuthControlRound(colorScheme),
+                    authMode === mode ? scheme.primary : loginMutedBtn
                   )}
                 >
                   {mode}
@@ -979,10 +1612,9 @@ export default function App(): JSX.Element {
                     key={mode}
                     onClick={() => setAuthMode(mode)}
                     className={cn(
-                      'ecs-interactive rounded-lg px-3 py-1.5 text-xs font-semibold uppercase motion-safe:active:scale-[0.98]',
-                      authMode === mode
-                        ? cn(scheme.primary, 'text-white')
-                        : 'border border-slate-300 text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800/60'
+                      'ecs-interactive px-3 py-1.5 text-xs font-semibold uppercase motion-safe:active:scale-[0.98]',
+                      ecsAuthControlRound(colorScheme),
+                      authMode === mode ? scheme.primary : loginMutedBtn
                     )}
                   >
                     {mode}
@@ -1092,7 +1724,8 @@ export default function App(): JSX.Element {
               type="button"
               onClick={() => void handleAuthSubmit()}
               className={cn(
-                'mt-4 w-full rounded-xl px-4 py-2 text-sm font-semibold text-white transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99]',
+                'mt-4 w-full px-4 py-2 text-sm font-semibold transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99]',
+                ecsWideControlRound(colorScheme),
                 scheme.primary
               )}
             >
@@ -1106,32 +1739,130 @@ export default function App(): JSX.Element {
   }
 
   return (
-    <div className="relative min-h-screen overflow-hidden text-slate-900 dark:text-slate-100">
-      <div className="pointer-events-none absolute inset-0 ecs-aero-scene" aria-hidden>
-        <div className="ecs-aero-sky" />
-        <div className="ecs-aero-ribbon motion-safe:animate-ecs-aero-ribbon" />
-        <div
-          className="ecs-aero-orb ecs-aero-orb--a motion-safe:animate-ecs-aero-float"
-          style={{ animationDelay: '-5s' }}
-        />
-        <div
-          className="ecs-aero-orb ecs-aero-orb--b motion-safe:animate-ecs-aero-float"
-          style={{ animationDelay: '-11s' }}
-        />
-        <div
-          className="ecs-aero-orb ecs-aero-orb--c motion-safe:animate-ecs-aero-float"
-          style={{ animationDelay: '-17s' }}
-        />
-        <div className="absolute inset-0 ecs-grid-wash opacity-80" />
+    <div className={cn('ecs-theme-shell relative min-h-screen overflow-hidden leading-relaxed', shellText)}>
+      <div className="pointer-events-none absolute inset-0 ecs-palette-backdrop" aria-hidden>
+        <div className="ecs-palette-layer ecs-palette-layer--default">
+          <div className="ecs-default-backdrop" />
+        </div>
+        <div className="ecs-palette-layer ecs-palette-layer--violet ecs-aero-scene">
+          <div className="ecs-aero-sky" />
+          <div className="ecs-aero-ribbon motion-safe:animate-ecs-aero-ribbon" />
+          <div className="ecs-aero-specular motion-safe:animate-ecs-aero-ribbon" style={{ animationDelay: '-4s' }} />
+          <div
+            className="ecs-aero-orb ecs-aero-orb--a motion-safe:animate-ecs-aero-float"
+            style={{ animationDelay: '-5s' }}
+          />
+          <div
+            className="ecs-aero-orb ecs-aero-orb--b motion-safe:animate-ecs-aero-float"
+            style={{ animationDelay: '-11s' }}
+          />
+          <div
+            className="ecs-aero-orb ecs-aero-orb--c motion-safe:animate-ecs-aero-float"
+            style={{ animationDelay: '-17s' }}
+          />
+          <div className="absolute inset-0 ecs-grid-wash opacity-80" />
+          <div className="ecs-aero-vignette" />
+        </div>
+        <div className="ecs-palette-layer ecs-palette-layer--teal">
+          <div className="ecs-win98-wallpaper" />
+          <div className="ecs-win98-pixel-grid" />
+        </div>
+        <div className="ecs-palette-layer ecs-palette-layer--sunset">
+          <div className="ecs-y2k-space" />
+          <div className="ecs-y2k-glow-ribbon motion-safe:animate-ecs-aero-ribbon" />
+          <div className="ecs-y2k-grid-floor" />
+        </div>
+        <div className="ecs-palette-layer ecs-palette-layer--wii ecs-wii-scene">
+          <div className="ecs-wii-backdrop" />
+          <div className="ecs-wii-channel-grid" />
+          <div className="ecs-wii-pane-matrix" />
+          <div className="ecs-wii-focus-dot motion-safe:animate-ecs-pulse-soft" />
+          <div
+            className="ecs-wii-shine-bubble left-[8%] top-[22%] h-[min(52vmin,380px)] w-[min(52vmin,380px)] motion-safe:animate-ecs-wii-drift"
+            aria-hidden
+          />
+          <div
+            className="ecs-wii-shine-bubble bottom-[12%] right-[6%] h-[min(40vmin,300px)] w-[min(56vmin,400px)] opacity-35 motion-safe:animate-ecs-wii-drift"
+            style={{ animationDelay: '-9s' }}
+            aria-hidden
+          />
+        </div>
+        <div className="ecs-palette-layer ecs-palette-layer--xmb ecs-xmb-scene">
+          <div className="ecs-xmb-backdrop" />
+          <div className="ecs-xmb-wave-layer motion-safe:animate-ecs-xmb-wave" />
+          <div className="ecs-xmb-wave-layer ecs-xmb-wave-layer--secondary motion-safe:animate-ecs-xmb-wave" />
+          <div className="ecs-xmb-column-guides" />
+          <div className="ecs-xmb-spark-grid" />
+        </div>
+        <div className="ecs-palette-layer ecs-palette-layer--cube ecs-cube-scene">
+          <div className="ecs-cube-backdrop" />
+          <div className="ecs-cube-facet-grid" />
+          <div className="ecs-cube-ghost-cube ecs-cube-ghost-cube--a motion-safe:animate-ecs-cube-drift" />
+          <div className="ecs-cube-ghost-cube ecs-cube-ghost-cube--b motion-safe:animate-ecs-cube-drift" style={{ animationDelay: '-8s' }} />
+          <div className="ecs-cube-lime-pulse motion-safe:animate-ecs-aero-float" />
+        </div>
+        <div className="ecs-palette-layer ecs-palette-layer--wiiu ecs-wiiu-scene">
+          <div className="ecs-wiiu-backdrop" />
+          <div className="ecs-wiiu-tile-grid" />
+        </div>
+        <div className="ecs-palette-layer ecs-palette-layer--3ds ecs-3ds-scene">
+          <div className="ecs-3ds-backdrop" />
+          <div className="ecs-3ds-dot-grid" />
+        </div>
       </div>
-      <div className="relative mx-auto max-w-7xl px-5 py-7">
-        <header className="ecs-shape-banner ecs-diagonal-strip relative mb-6 rounded-[1.75rem] border border-cyan-300/55 bg-white/82 p-5 shadow-aero-float backdrop-blur-md motion-safe:animate-ecs-fade-up dark:border-teal-800/55 dark:bg-slate-900/78">
+      <div className={cn('relative mx-auto ecs-workspace-flow', workspaceShellClass)}>
+        <header className={headerChrome} data-region="header">
+          {colorScheme === 'teal' ? (
+            <>
+              <div
+                className="pointer-events-none absolute left-0 right-0 top-0 h-2 rounded-t-[5px] bg-gradient-to-r from-[#000080] to-[#1084d0]"
+                aria-hidden
+              />
+              <div
+                className="pointer-events-none absolute right-2 top-0 flex h-2 items-center gap-[3px] pr-1"
+                aria-hidden
+              >
+                <span className="block h-1.5 w-3 rounded-[2px] bg-[#c0c0c0]/85" />
+                <span className="block h-1.5 w-3 rounded-[2px] bg-[#c0c0c0]/85" />
+                <span className="block h-1.5 w-3 rounded-[2px] bg-[#ff6b6b]/85" />
+              </div>
+            </>
+          ) : null}
+          {colorScheme === 'xmb' ? (
+            <div
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-sky-400/75 to-transparent"
+              aria-hidden
+            />
+          ) : null}
+          {colorScheme === 'wii' && !darkMode ? (
+            <div
+              className="pointer-events-none absolute inset-x-6 top-0 h-px rounded-full bg-gradient-to-r from-transparent via-white/80 to-transparent"
+              aria-hidden
+            />
+          ) : null}
+          {colorScheme === 'cube' ? (
+            <div
+              className="pointer-events-none absolute bottom-2 left-3 top-3 w-1 rounded-full bg-gradient-to-b from-indigo-300 to-slate-200 opacity-90"
+              aria-hidden
+            />
+          ) : null}
+          {colorScheme === 'sunset' ? (
+            <div
+              className="pointer-events-none absolute -inset-px rounded-[inherit] opacity-70 motion-safe:animate-ecs-pulse-soft"
+              style={{
+                background:
+                  'conic-gradient(from 220deg at 50% 50%, rgba(244,114,182,0.0), rgba(244,114,182,0.18), rgba(56,189,248,0.16), rgba(190,242,100,0.12), rgba(244,114,182,0.0))',
+                filter: 'blur(28px)'
+              }}
+              aria-hidden
+            />
+          ) : null}
           <div className="relative z-[1] flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h1 className="text-2xl font-bold">Campaign Manager</h1>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                Track characters, campaigns, and encounters.
-              </p>
+              <h1 className={cn('text-2xl font-bold', colorScheme === 'sunset' && 'ecs-y2k-text-glow')}>
+                Campaign Manager
+              </h1>
+              <p className={cn('text-sm', headerSubtitleClass)}>Track characters, campaigns, and encounters.</p>
             </div>
             <div className="relative flex flex-wrap items-center gap-2">
               <button
@@ -1151,21 +1882,35 @@ export default function App(): JSX.Element {
               </button>
             </div>
           </div>
+          {colorScheme === 'teal' ? (
+            <div
+              className="ecs-win98-menubar relative z-[1] mt-2 flex items-center gap-3 border-t border-black/35 pt-1 text-[11px] font-semibold tracking-wide text-gray-800 dark:border-black/55 dark:text-gray-200"
+              aria-hidden
+            >
+              <span><u>F</u>ile</span>
+              <span><u>E</u>dit</span>
+              <span><u>V</u>iew</span>
+              <span><u>H</u>elp</span>
+            </div>
+          ) : null}
         </header>
 
-        <div className="mb-4 flex flex-wrap gap-2 motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:55ms]">
-          <div className="rounded-full border border-cyan-200/75 bg-white/85 px-3 py-1 text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03] dark:border-teal-800/70 dark:bg-slate-900/65 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+        <div
+          data-region="status"
+          className="ecs-workspace-status flex flex-wrap gap-2 motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:55ms]"
+        >
+          <div className={statusPill}>
             Mode: <span className="font-semibold">{rulesMode === 'dnd' ? 'DnD' : 'TTRPG'}</span>
           </div>
-          <div className="rounded-full border border-cyan-200/75 bg-white/85 px-3 py-1 text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03] dark:border-teal-800/70 dark:bg-slate-900/65 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+          <div className={statusPill}>
             Characters: <span className="font-semibold">{characters.length}</span>
           </div>
-          <div className="rounded-full border border-cyan-200/75 bg-white/85 px-3 py-1 text-xs shadow-[inset_0_1px_0_rgba(255,255,255,0.85)] motion-safe:transition-transform motion-safe:duration-200 motion-safe:hover:scale-[1.03] dark:border-teal-800/70 dark:bg-slate-900/65 dark:shadow-[inset_0_1px_0_rgba(255,255,255,0.06)]">
+          <div className={statusPill}>
             Campaign: <span className="font-semibold">{activeCampaign?.name ?? 'Personal'}</span>
           </div>
         </div>
 
-        <div className="grid gap-6 motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:110ms] lg:grid-cols-[300px_1fr]">
+        <div className={workspaceGridClass} data-region="grid">
           <aside className={cn('rounded-3xl p-5 shadow-sm lg:sticky lg:top-5 lg:h-fit', cardClass)}>
             <h2 className="text-sm font-bold uppercase tracking-wide">Campaigns</h2>
             {guidedSetup ? (
@@ -1288,7 +2033,7 @@ export default function App(): JSX.Element {
               >
                 New Character
               </button>
-              <ul className="mt-3 space-y-2">
+              <ul className="ecs-character-list mt-3 space-y-2">
                 {filteredCharacters.map((character) => (
                   <li key={character.id}>
                     <button
@@ -1298,9 +2043,10 @@ export default function App(): JSX.Element {
                       onDragEnd={() => setDragCharacterId(null)}
                       onClick={() => openCharacter(character)}
                       className={cn(
-                        'flex w-full gap-2 rounded-lg border px-2 py-2 text-left motion-safe:transition-[border-color,box-shadow,background-color] motion-safe:duration-200 motion-safe:hover:shadow-md motion-safe:hover:border-slate-300 dark:motion-safe:hover:border-slate-600',
+                        'flex w-full gap-2 border px-2 py-2 text-left motion-safe:transition-[border-color,box-shadow,background-color] motion-safe:duration-200 motion-safe:hover:shadow-md motion-safe:hover:border-slate-300 dark:motion-safe:hover:border-slate-600',
+                        ecsCharacterRowRound(colorScheme),
                         selectedId === character.id
-                          ? 'border-sky-500 bg-sky-50 shadow-[inset_0_1px_0_rgba(255,255,255,0.65)] dark:border-sky-400 dark:bg-sky-950/35'
+                          ? characterRowSelected
                           : 'border-slate-200 dark:border-slate-700'
                       )}
                     >
@@ -1956,6 +2702,18 @@ export default function App(): JSX.Element {
           </main>
         </div>
 
+        {colorScheme === 'teal' && useThemeLayout ? (
+          <div
+            data-region="statusbar"
+            className="ecs-win98-statusbar mt-2 flex items-center gap-0 border-t border-l border-white/85 border-b border-r border-black/55 bg-[#ece9d8] px-1 py-1 text-[11px] text-gray-900 shadow-[inset_-1px_-1px_0_#404040,inset_1px_1px_0_#ffffff] dark:bg-[#5a5a5a] dark:text-gray-100 dark:shadow-[inset_-1px_-1px_0_#222,inset_1px_1px_0_#888]"
+          >
+            <span className="ecs-win98-statusbar-cell">Ready</span>
+            <span className="ecs-win98-statusbar-cell">{characters.length} object(s)</span>
+            <span className="ecs-win98-statusbar-cell">Campaign: {activeCampaign?.name ?? 'Personal'}</span>
+            <span className="ecs-win98-statusbar-cell ml-auto">{rulesMode === 'dnd' ? 'DnD mode' : 'TTRPG mode'}</span>
+          </div>
+        ) : null}
+
         {showQuickCreate ? (
           <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-950/45 p-4">
             <div className={cn('w-full max-w-md rounded-2xl border p-4 shadow-xl', cardClass)}>
@@ -2067,7 +2825,9 @@ export default function App(): JSX.Element {
                   Workspace Settings
                 </div>
                 <label className="mt-2 block text-xs">
-                  Mode
+                  <SettingsLabel hint="TTRPG mode is generic and lightweight. DnD mode adds 5e-specific fields like ability scores, skills, and standard actions to your sheets.">
+                    Mode
+                  </SettingsLabel>
                   <select
                     value={rulesMode}
                     onChange={(event) => setRulesMode(event.target.value as RulesMode)}
@@ -2078,19 +2838,42 @@ export default function App(): JSX.Element {
                   </select>
                 </label>
                 <label className="mt-2 block text-xs">
-                  Color scheme
+                  <SettingsLabel hint="Pick the look of the app. Each scheme inspires a different era and platform — colors, animations, and components all change.">
+                    Color scheme
+                  </SettingsLabel>
                   <select
                     value={colorScheme}
                     onChange={(event) => setColorScheme(event.target.value as ColorScheme)}
                     className="mt-1 w-full rounded border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
                   >
-                    <option value="violet">Sky meadow</option>
-                    <option value="teal">Crystal tide</option>
-                    <option value="sunset">Sunset coral</option>
+                    <option value="default">Default · clean modern (no theme)</option>
+                    <option value="violet">Aero meadow · glossy mid‑2000s</option>
+                    <option value="teal">Classic chrome · late‑90s Windows</option>
+                    <option value="sunset">Y2K neon · electric early‑2000s</option>
+                    <option value="wii">Wii channels · silver + rounded tiles</option>
+                    <option value="xmb">XMB wave · PS3‑style metallic bar</option>
+                    <option value="cube">GameCube BIOS · indigo glass cube</option>
+                    <option value="wiiu">Wii U dashboard · cyan glass tiles</option>
+                    <option value="3ds">Nintendo 3DS · red shell + dual screen</option>
                   </select>
                 </label>
                 <label className="mt-2 block text-xs">
-                  Theme
+                  <SettingsLabel hint="Themed layout reshuffles the page (sidebar position, status bar, character list shape) to match the source material. Default layout keeps the colors but uses the standard sidebar-on-left workspace.">
+                    Page layout
+                  </SettingsLabel>
+                  <select
+                    value={useThemeLayout ? 'themed' : 'default'}
+                    onChange={(event) => setUseThemeLayout(event.target.value === 'themed')}
+                    className="mt-1 w-full rounded border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                  >
+                    <option value="themed">Themed layout (per scheme)</option>
+                    <option value="default">Default layout (sidebar left)</option>
+                  </select>
+                </label>
+                <label className="mt-2 block text-xs">
+                  <SettingsLabel hint="System follows your OS light/dark setting. Light forces a bright UI, Dark forces a dim UI for low-light play.">
+                    Theme
+                  </SettingsLabel>
                   <select
                     value={themeMode}
                     onChange={(event) => setThemeMode(event.target.value as ThemeMode)}
@@ -2102,7 +2885,9 @@ export default function App(): JSX.Element {
                   </select>
                 </label>
                 <label className="mt-2 block text-xs">
-                  Visual style
+                  <SettingsLabel hint="Clean is the standard surface treatment. Parchment overrides cards with a warm aged-paper feel, ideal for fantasy sessions.">
+                    Visual style
+                  </SettingsLabel>
                   <select
                     value={visualStyle}
                     onChange={(event) => setVisualStyle(event.target.value as VisualStyle)}

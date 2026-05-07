@@ -44,6 +44,18 @@ module.exports = {
         ecsAeroRibbon: {
           '0%, 100%': { transform: 'rotate(-8deg) translateX(-4%)' },
           '50%': { transform: 'rotate(-6deg) translateX(4%)' }
+        },
+        ecsXmbWave: {
+          '0%': { backgroundPosition: '0% 40%' },
+          '100%': { backgroundPosition: '100% 60%' }
+        },
+        ecsWiiDrift: {
+          '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
+          '50%': { transform: 'translate(-3%, 2%) scale(1.02)' }
+        },
+        ecsCubeDrift: {
+          '0%, 100%': { transform: 'translate(0, 0) rotate(-8deg)' },
+          '50%': { transform: 'translate(10px, -8px) rotate(6deg)' }
         }
       },
       animation: {
@@ -52,7 +64,10 @@ module.exports = {
         'ecs-backdrop-in': 'ecsBackdropIn 200ms ease-out both',
         'ecs-pulse-soft': 'ecsPulseSoft 2.4s ease-in-out infinite',
         'ecs-aero-float': 'ecsAeroFloat 22s ease-in-out infinite',
-        'ecs-aero-ribbon': 'ecsAeroRibbon 28s ease-in-out infinite'
+        'ecs-aero-ribbon': 'ecsAeroRibbon 28s ease-in-out infinite',
+        'ecs-xmb-wave': 'ecsXmbWave 22s linear infinite',
+        'ecs-wii-drift': 'ecsWiiDrift 16s ease-in-out infinite',
+        'ecs-cube-drift': 'ecsCubeDrift 18s ease-in-out infinite'
       }
     }
   },
