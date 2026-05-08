@@ -10,20 +10,17 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  build:
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: macos-latest
             build_cmd: npx electron-builder --mac dmg zip --publish never --config.mac.identity=null
-            artifact_glob: dist/*.dmg
           - os: windows-latest
             build_cmd: npx electron-builder --win nsis --x64 --publish never
-            artifact_glob: dist/*setup*.exe
           - os: ubuntu-latest
             build_cmd: npx electron-builder --linux AppImage deb --publish never
-            artifact_glob: dist/*.AppImage
 
     runs-on: ${{ matrix.os }}
     timeout-minutes: 40
@@ -50,12 +47,34 @@ jobs:
           npm run build
           ${{ matrix.build_cmd }}
 
-      - name: Upload release assets
-        uses: softprops/action-gh-release@v2
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
         with:
-          files: |
+          name: release-${{ matrix.os }}
+          if-no-files-found: error
+          path: |
             dist/*.dmg
             dist/*.zip
             dist/*setup*.exe
             dist/*.AppImage
             dist/*.deb
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+
+      - name: Publish GitHub Release assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release-assets/**/*.dmg
+            release-assets/**/*.zip
+            release-assets/**/*setup*.exe
+            release-assets/**/*.AppImage
+            release-assets/**/*.deb
