@@ -40,7 +40,6 @@ import {
 import { DndSheetSection, ecsPortraitSrc, emptyManualAttackDraft, type ManualAttackDraft } from './components/DndSheetSection'
 import { LoginUpdateLog } from './components/LoginUpdateLog'
 import { backend } from './lib/backend'
-import feedRaw from '../../../update-feed.config.json'
 import {
   clearUiCopyOverrides,
   isMultilineKey,
@@ -91,27 +90,12 @@ const UPDATE_PROMPT_DISMISSED_KEY = 'ecs_update_prompt_dismissed_v1'
 const STARTUP_SPLASH_DURATION_KEY = 'ecs_startup_splash_ms_v1'
 const UPDATE_CHECK_MS = 15 * 60 * 1000
 
-type UpdateFeedConfig = { githubRepo?: string; branch?: string }
-
-function normalizeVersionTag(value: unknown): string | null {
-  if (typeof value !== 'string') return null
-  const trimmed = value.trim().replace(/^v/i, '')
-  const match = /^(\d+)(?:\.(\d+))?(?:\.(\d+))?/.exec(trimmed)
-  if (!match) return null
-  const major = Number(match[1] ?? '0')
-  const minor = Number(match[2] ?? '0')
-  const patch = Number(match[3] ?? '0')
-  return `${major}.${minor}.${patch}`
-}
-
-function compareVersionTag(a: string, b: string): number {
-  const pa = a.split('.').map((part) => Number(part) || 0)
-  const pb = b.split('.').map((part) => Number(part) || 0)
-  for (let i = 0; i < 3; i += 1) {
-    if ((pa[i] ?? 0) > (pb[i] ?? 0)) return 1
-    if ((pa[i] ?? 0) < (pb[i] ?? 0)) return -1
-  }
-  return 0
+type UpdateStatusPhase = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'
+type UpdateStatus = {
+  phase: UpdateStatusPhase
+  version?: string
+  progress?: number
+  message?: string
 }
 
 function parseStartupSplashDuration(value: unknown): number {
@@ -2196,7 +2180,21 @@ export default function App(): JSX.Element {
   const [showDevCommandPalette, setShowDevCommandPalette] = useState(false)
   const [devCommandQuery, setDevCommandQuery] = useState('')
   const [appVersion, setAppVersion] = useState<string | null>(null)
-  const [availableUpdate, setAvailableUpdate] = useState<{ version: string; url: string } | null>(null)
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ phase: 'idle' })
+  const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string | null>(() => {
+    if (typeof window === 'undefined') return null
+    try {
+      return window.localStorage.getItem(UPDATE_PROMPT_DISMISSED_KEY)
+    } catch {
+      return null
+    }
+  })
+  const updaterApiAvailable =
+    typeof backend.appApi.updateStatus === 'function' &&
+    typeof backend.appApi.updateCheck === 'function' &&
+    typeof backend.appApi.updateDownload === 'function' &&
+    typeof backend.appApi.updateInstall === 'function' &&
+    typeof backend.appApi.onUpdateStatus === 'function'
   const devUnlockTapCountRef = useRef(0)
   const [devPanelTab, setDevPanelTab] = useState<DevPanelTab>(() => {
     if (typeof window === 'undefined') return 'workbench'
@@ -2348,6 +2346,7 @@ export default function App(): JSX.Element {
   }, [rememberLogin, prefsHydrated])
 
   useEffect(() => {
+    if (!updaterApiAvailable) return
     let cancelled = false
     void backend.appApi
       .getPrefs([PREF_REMEMBER_LOGIN, PREF_GUEST_APPEARANCE])
@@ -2394,7 +2393,7 @@ export default function App(): JSX.Element {
     return () => {
       cancelled = true
     }
-  }, [])
+  }, [updaterApiAvailable])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -2479,43 +2478,34 @@ export default function App(): JSX.Element {
   }, [])
 
   useEffect(() => {
-    if (!appVersion) return
-    const currentVersion = normalizeVersionTag(appVersion)
-    const repo = ((feedRaw as UpdateFeedConfig).githubRepo ?? '').trim()
-    if (!repo || !currentVersion) return
     let cancelled = false
+    void backend.appApi
+      .updateStatus()
+      .then((payload) => {
+        if (!cancelled) setUpdateStatus(payload)
+      })
+      .catch(() => {
+        // ignore updater bootstrap failures
+      })
+    const off = backend.appApi.onUpdateStatus((payload) => setUpdateStatus(payload))
+    return () => {
+      cancelled = true
+      off()
+    }
+  }, [])
+
+  useEffect(() => {
+    if (updateStatus.phase !== 'error' || !updateStatus.message) return
+    setAppMessage(updateStatus.message)
+  }, [updateStatus])
+
+  useEffect(() => {
+    if (!updaterApiAvailable) return
     const checkForUpdates = async (): Promise<void> => {
-      try {
-        const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest?t=${Date.now()}`, {
-          cache: 'no-store'
-        })
-        if (!response.ok || cancelled) return
-        const payload = (await response.json()) as { tag_name?: unknown; name?: unknown; html_url?: unknown }
-        if (cancelled) return
-        const latestVersion = normalizeVersionTag(payload.tag_name ?? payload.name)
-        if (!latestVersion) return
-        if (compareVersionTag(latestVersion, currentVersion) <= 0) {
-          setAvailableUpdate(null)
-          return
-        }
-        let dismissedVersion: string | null = null
-        try {
-          dismissedVersion = window.localStorage.getItem(UPDATE_PROMPT_DISMISSED_KEY)
-        } catch {
-          dismissedVersion = null
-        }
-        if (dismissedVersion === latestVersion) {
-          setAvailableUpdate(null)
-          return
-        }
-        const releaseUrl =
-          typeof payload.html_url === 'string' && payload.html_url.trim()
-            ? payload.html_url
-            : `https://github.com/${repo}/releases/latest`
-        setAvailableUpdate({ version: latestVersion, url: releaseUrl })
-      } catch {
-        // ignore connectivity failures; keep current UI
-      }
+      const result: { ok: boolean; message?: string } = await backend.appApi
+        .updateCheck()
+        .catch(() => ({ ok: false, message: 'Unable to check for updates.' }))
+      if (!result.ok && result.message) setAppMessage(result.message)
     }
     void checkForUpdates()
     const intervalId = window.setInterval(() => void checkForUpdates(), UPDATE_CHECK_MS)
@@ -2524,11 +2514,10 @@ export default function App(): JSX.Element {
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
-      cancelled = true
       window.clearInterval(intervalId)
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [appVersion])
+  }, [updaterApiAvailable])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -4654,39 +4643,98 @@ export default function App(): JSX.Element {
     },
     [devCommands]
   )
-  const updatePrompt = availableUpdate ? (
-    <div className="pointer-events-auto fixed left-1/2 top-3 z-[130] flex w-[min(94vw,38rem)] -translate-x-1/2 items-start gap-3 rounded-xl border-2 border-emerald-300 bg-white/95 px-3 py-2.5 text-sm text-zinc-900 shadow-xl backdrop-blur-sm motion-safe:animate-ecs-pop-in dark:border-emerald-500/45 dark:bg-zinc-950/95 dark:text-zinc-50">
+  const shouldShowUpdatePrompt =
+    updateStatus.phase === 'available' &&
+    !!updateStatus.version &&
+    dismissedUpdateVersion !== updateStatus.version
+  const downloadProgress = typeof updateStatus.progress === 'number' ? Math.max(0, Math.min(100, updateStatus.progress)) : 0
+  const handleBeginUpdateDownload = useCallback(async (): Promise<void> => {
+    if (!updaterApiAvailable) return
+    const result = await backend.appApi.updateDownload().catch(() => ({ ok: false as const, message: 'Download failed.' }))
+    if (!result.ok) setAppMessage(result.message ?? 'Download failed.')
+  }, [updaterApiAvailable])
+  const handleInstallUpdate = useCallback(async (): Promise<void> => {
+    if (!updaterApiAvailable) return
+    const result = await backend.appApi.updateInstall().catch(() => ({ ok: false as const, message: 'Install failed.' }))
+    if (!result.ok) setAppMessage(result.message ?? 'Install failed.')
+  }, [updaterApiAvailable])
+  const updatePrompt = shouldShowUpdatePrompt ? (
+    <div className="pointer-events-auto fixed left-1/2 top-3 z-[130] flex w-[min(94vw,42rem)] -translate-x-1/2 items-start gap-3 rounded-xl border-2 border-emerald-300 bg-white/95 px-3 py-2.5 text-sm text-zinc-900 shadow-xl backdrop-blur-sm motion-safe:animate-ecs-pop-in dark:border-emerald-500/45 dark:bg-zinc-950/95 dark:text-zinc-50">
       <span aria-hidden className="mt-0.5 shrink-0 text-base leading-none text-emerald-600 dark:text-emerald-300">
         ↑
       </span>
       <div className="min-w-0 flex-1 leading-snug">
-        Update available: <strong>v{availableUpdate.version}</strong>
-        {appVersion ? ` (you are on v${appVersion}).` : '.'} Download to install the latest Tactile release.
+        Update available: <strong>v{updateStatus.version}</strong>
+        {appVersion ? ` (you are on v${appVersion}).` : '.'} Download and install directly in Tactile.
+      </div>
+      <div className="ml-auto flex shrink-0 items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void handleBeginUpdateDownload()}
+          className="ecs-interactive rounded-md border border-emerald-400/75 bg-emerald-500 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-600 dark:border-emerald-500/45 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+        >
+          Download now
+        </button>
+        <button
+          type="button"
+          aria-label="Dismiss update prompt"
+          onClick={() => {
+            const version = updateStatus.version ?? null
+            setDismissedUpdateVersion(version)
+            if (!version) return
+            try {
+              window.localStorage.setItem(UPDATE_PROMPT_DISMISSED_KEY, version)
+            } catch {
+              // ignore storage write issues
+            }
+          }}
+          className="ecs-interactive rounded-md border border-zinc-300 px-1.5 py-0.5 text-[11px] font-semibold text-zinc-600 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800/60"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  ) : null
+  const showUpdateOverlay = updateStatus.phase === 'checking' || updateStatus.phase === 'downloading'
+  const updateOverlay = showUpdateOverlay ? (
+    <div className="fixed inset-0 z-[70000] flex items-center justify-center bg-slate-950/82 px-4 backdrop-blur-md">
+      <div className="w-full max-w-md rounded-2xl border border-slate-700/80 bg-slate-900/92 p-6 text-slate-50 shadow-2xl">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-cyan-400/45 bg-cyan-500/10">
+          <EcsLogoMark className="h-10 w-10 motion-safe:animate-[spin_2.2s_linear_infinite]" />
+        </div>
+        <h3 className="mt-4 text-center text-xl font-semibold">
+          {updateStatus.phase === 'checking' ? 'Checking for update...' : 'Downloading update...'}
+        </h3>
+        <p className="mt-2 text-center text-sm text-slate-300">{updateStatus.message ?? 'Preparing updater...'}</p>
+        {updateStatus.phase === 'downloading' ? (
+          <div className="mt-5">
+            <div className="h-2 overflow-hidden rounded-full bg-slate-700">
+              <div className="h-full bg-cyan-400 transition-all" style={{ width: `${downloadProgress}%` }} />
+            </div>
+            <p className="mt-2 text-center text-xs font-medium text-cyan-200">{downloadProgress}% complete</p>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  ) : null
+  const installPrompt = updateStatus.phase === 'downloaded' ? (
+    <div className="pointer-events-auto fixed left-1/2 top-3 z-[130] flex w-[min(94vw,42rem)] -translate-x-1/2 items-start gap-3 rounded-xl border-2 border-cyan-300 bg-white/95 px-3 py-2.5 text-sm text-zinc-900 shadow-xl backdrop-blur-sm motion-safe:animate-ecs-pop-in dark:border-cyan-500/45 dark:bg-zinc-950/95 dark:text-zinc-50">
+      <span aria-hidden className="mt-0.5 shrink-0 text-base leading-none text-cyan-600 dark:text-cyan-300">
+        ✓
+      </span>
+      <div className="min-w-0 flex-1 leading-snug">
+        Update {updateStatus.version ? `v${updateStatus.version}` : ''} downloaded. Restart to install now.
       </div>
       <button
         type="button"
-        onClick={() => window.open(availableUpdate.url, '_blank', 'noopener,noreferrer')}
-        className="ecs-interactive shrink-0 rounded-md border border-emerald-400/75 bg-emerald-500 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-600 dark:border-emerald-500/45 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+        onClick={() => void handleInstallUpdate()}
+        className="ecs-interactive shrink-0 rounded-md border border-cyan-400/75 bg-cyan-500 px-2 py-1 text-xs font-semibold text-white hover:bg-cyan-600 dark:border-cyan-500/45 dark:bg-cyan-600 dark:hover:bg-cyan-500"
       >
-        Download
-      </button>
-      <button
-        type="button"
-        aria-label="Dismiss update prompt"
-        onClick={() => {
-          try {
-            window.localStorage.setItem(UPDATE_PROMPT_DISMISSED_KEY, availableUpdate.version)
-          } catch {
-            // ignore storage write issues
-          }
-          setAvailableUpdate(null)
-        }}
-        className="ecs-interactive shrink-0 rounded-md border border-zinc-300 px-1.5 py-0.5 text-[11px] font-semibold text-zinc-600 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800/60"
-      >
-        ×
+        Restart & install
       </button>
     </div>
   ) : null
+  const hasUpdateBanner = Boolean(updatePrompt || installPrompt)
 
   if (!isAuthed) {
     const authField = cn('ecs-ui-input w-full px-3 py-2', ecsWideControlRound(colorScheme), loginAuthFieldClass)
@@ -4700,6 +4748,8 @@ export default function App(): JSX.Element {
       >
         <EcsPaletteBackdrop />
         {updatePrompt}
+        {installPrompt}
+        {updateOverlay}
         <div className="relative z-[1] px-4 py-6">
           <div className={cn('mx-auto w-full', loginShellMaxClass)}>
             {colorScheme === 'teal' ? (
@@ -5267,12 +5317,14 @@ export default function App(): JSX.Element {
   return (
     <div className={cn('ecs-theme-shell ecs-signature-shell relative min-h-screen overflow-x-clip overflow-y-visible leading-relaxed', shellText)}>
       {updatePrompt}
+      {installPrompt}
+      {updateOverlay}
       {syncBanner ? (
         <div
           role="status"
           className={cn(
             'pointer-events-auto fixed left-1/2 z-[120] flex max-w-md -translate-x-1/2 items-start gap-2 rounded-xl border border-sky-200/90 bg-sky-50/95 px-3 py-2 text-sm text-sky-950 shadow-lg backdrop-blur-sm motion-safe:animate-ecs-pop-in dark:border-sky-500/35 dark:bg-sky-950/90 dark:text-sky-50',
-            availableUpdate ? 'top-[4.25rem]' : 'top-3'
+            hasUpdateBanner ? 'top-[4.25rem]' : 'top-3'
           )}
         >
           <span aria-hidden className="mt-0.5 shrink-0 text-base leading-none">↻</span>
@@ -5297,7 +5349,7 @@ export default function App(): JSX.Element {
           aria-live="polite"
           className={cn(
             'pointer-events-auto fixed right-4 z-[125] flex w-[min(92vw,22rem)] items-start gap-2 rounded-xl border-2 border-amber-300 bg-white/95 px-3 py-2.5 text-sm text-zinc-900 shadow-xl backdrop-blur-sm motion-safe:animate-ecs-pop-in dark:border-amber-500/45 dark:bg-zinc-950/95 dark:text-zinc-50',
-            syncBanner && availableUpdate ? 'top-[8.5rem]' : syncBanner || availableUpdate ? 'top-[4.25rem]' : 'top-3'
+            syncBanner && hasUpdateBanner ? 'top-[8.5rem]' : syncBanner || hasUpdateBanner ? 'top-[4.25rem]' : 'top-3'
           )}
         >
           <span aria-hidden className="mt-0.5 shrink-0 text-base leading-none text-amber-600 dark:text-amber-300">

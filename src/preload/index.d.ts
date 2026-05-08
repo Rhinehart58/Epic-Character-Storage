@@ -84,6 +84,21 @@ declare global {
       getVersion: () => Promise<string>
       getPrefs: (keys: string[]) => Promise<Record<string, string | null>>
       setPrefs: (entries: Record<string, string | null>) => Promise<{ ok: true }>
+      updateStatus: () => Promise<{
+        phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'
+        version?: string
+        progress?: number
+        message?: string
+      }>
+      updateCheck: () => Promise<{ ok: boolean; message?: string }>
+      updateDownload: () => Promise<{ ok: boolean; message?: string }>
+      updateInstall: () => Promise<{ ok: boolean; message?: string }>
+      onUpdateStatus: (callback: (payload: {
+        phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'
+        version?: string
+        progress?: number
+        message?: string
+      }) => void) => () => void
     }
     portraitApi: {
       choose: (payload: { characterId: string | null }) => Promise<{

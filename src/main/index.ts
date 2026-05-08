@@ -2,6 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, protocol, nativeTheme } from 'elect
 import { join, relative, resolve } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
+import { autoUpdater } from 'electron-updater'
 import {
   createAccount,
   createCampaign,
@@ -31,6 +32,55 @@ import { getSmtpStatus, sendAccountConfirmationEmail, sendTestEmail } from './ma
 import type { CharacterSaveInput, SyncActivityPayload, SyncChangedBroadcast } from '../shared/character-types'
 import { deletePortraitIfExists, pickAndStorePortrait, portraitsRoot } from './portraits'
 import { getPrefs, setPrefs } from './app-prefs'
+
+type UpdateStatusPayload = {
+  phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'
+  version?: string
+  progress?: number
+  message?: string
+}
+
+let updateStatus: UpdateStatusPayload = { phase: 'idle' }
+
+function publishUpdateStatus(payload: UpdateStatusPayload): void {
+  updateStatus = payload
+  for (const win of BrowserWindow.getAllWindows()) {
+    win.webContents.send('app:update-status', payload)
+  }
+}
+
+function setupAutoUpdater(): void {
+  autoUpdater.autoDownload = false
+  autoUpdater.autoInstallOnAppQuit = true
+
+  autoUpdater.on('checking-for-update', () => {
+    publishUpdateStatus({ phase: 'checking', message: 'Checking for updates...' })
+  })
+  autoUpdater.on('update-available', (info) => {
+    publishUpdateStatus({ phase: 'available', version: info.version, message: 'Update available.' })
+  })
+  autoUpdater.on('update-not-available', () => {
+    publishUpdateStatus({ phase: 'up-to-date', message: 'You are up to date.' })
+  })
+  autoUpdater.on('error', (error) => {
+    publishUpdateStatus({ phase: 'error', message: error?.message ?? 'Update failed.' })
+  })
+  autoUpdater.on('download-progress', (progress) => {
+    publishUpdateStatus({
+      phase: 'downloading',
+      progress: Math.max(0, Math.min(100, Math.round(progress.percent))),
+      message: 'Downloading update...'
+    })
+  })
+  autoUpdater.on('update-downloaded', (info) => {
+    publishUpdateStatus({
+      phase: 'downloaded',
+      version: info.version,
+      progress: 100,
+      message: 'Update ready to install.'
+    })
+  })
+}
 
 function publishRealtimeUpdate(
   scope: SyncChangedBroadcast['scope'],
@@ -197,6 +247,43 @@ ipcMain.handle('app:getPrefs', async (_event, keys: string[]) => getPrefs(Array.
 ipcMain.handle('app:setPrefs', async (_event, entries: Record<string, string | null>) =>
   setPrefs(entries && typeof entries === 'object' ? entries : {})
 )
+ipcMain.handle('app:updateStatus', async () => updateStatus)
+ipcMain.handle('app:updateCheck', async () => {
+  if (!app.isPackaged) {
+    publishUpdateStatus({ phase: 'error', message: 'Updater works in packaged builds only.' })
+    return { ok: false as const, message: 'Updater works in packaged builds only.' }
+  }
+  try {
+    await autoUpdater.checkForUpdates()
+    return { ok: true as const }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to check for updates.'
+    publishUpdateStatus({ phase: 'error', message })
+    return { ok: false as const, message }
+  }
+})
+ipcMain.handle('app:updateDownload', async () => {
+  if (!app.isPackaged) {
+    publishUpdateStatus({ phase: 'error', message: 'Updater works in packaged builds only.' })
+    return { ok: false as const, message: 'Updater works in packaged builds only.' }
+  }
+  try {
+    await autoUpdater.downloadUpdate()
+    return { ok: true as const }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to download update.'
+    publishUpdateStatus({ phase: 'error', message })
+    return { ok: false as const, message }
+  }
+})
+ipcMain.handle('app:updateInstall', async () => {
+  if (!app.isPackaged) {
+    publishUpdateStatus({ phase: 'error', message: 'Updater works in packaged builds only.' })
+    return { ok: false as const, message: 'Updater works in packaged builds only.' }
+  }
+  setImmediate(() => autoUpdater.quitAndInstall())
+  return { ok: true as const }
+})
 
 ipcMain.handle('accounts:getActive', async () => getActiveAccountId())
 ipcMain.handle('accounts:setActive', async (_event, accountId: string) => setActiveAccount(accountId))
@@ -322,6 +409,7 @@ function registerPortraitProtocol(): void {
 }
 
 app.whenReady().then(() => {
+  setupAutoUpdater()
   registerPortraitProtocol()
   electronApp.setAppUserModelId('com.epiccharacterstorage.app')
 

@@ -1,6 +1,6 @@
 {
   "name": "epic-character-storage",
-  "version": "1.0.5",
+  "version": "1.0.9",
   "description": "Desktop RPG character manager with keyword-based attack generation",
   "main": "./out/main/index.js",
   "author": "",
@@ -35,6 +35,7 @@
     "@electron-toolkit/preload": "^3.0.2",
     "@electron-toolkit/utils": "^4.0.0",
     "clsx": "^2.1.1",
+    "electron-updater": "^6.8.3",
     "nodemailer": "^8.0.7",
     "tailwind-merge": "^3.3.1"
   },

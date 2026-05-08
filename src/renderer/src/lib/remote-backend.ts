@@ -72,7 +72,12 @@ export function createRemoteBackendStub(_options: { baseUrl: string }): IAppBack
     appApi: {
       getVersion: () => err('appApi.getVersion'),
       getPrefs: () => err('appApi.getPrefs'),
-      setPrefs: () => err('appApi.setPrefs')
+      setPrefs: () => err('appApi.setPrefs'),
+      updateStatus: async () => ({ phase: 'idle' as const }),
+      updateCheck: async () => ({ ok: false, message: 'Auto-update is unavailable in remote backend mode.' }),
+      updateDownload: async () => ({ ok: false, message: 'Auto-update is unavailable in remote backend mode.' }),
+      updateInstall: async () => ({ ok: false, message: 'Auto-update is unavailable in remote backend mode.' }),
+      onUpdateStatus: () => () => {}
     }
   }
 }

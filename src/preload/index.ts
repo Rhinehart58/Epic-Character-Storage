@@ -102,7 +102,36 @@ const appApi = {
   getVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
   getPrefs: (keys: string[]): Promise<Record<string, string | null>> => ipcRenderer.invoke('app:getPrefs', keys),
   setPrefs: (entries: Record<string, string | null>): Promise<{ ok: true }> =>
-    ipcRenderer.invoke('app:setPrefs', entries)
+    ipcRenderer.invoke('app:setPrefs', entries),
+  updateStatus: (): Promise<{
+    phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'
+    version?: string
+    progress?: number
+    message?: string
+  }> => ipcRenderer.invoke('app:updateStatus'),
+  updateCheck: (): Promise<{ ok: boolean; message?: string }> => ipcRenderer.invoke('app:updateCheck'),
+  updateDownload: (): Promise<{ ok: boolean; message?: string }> => ipcRenderer.invoke('app:updateDownload'),
+  updateInstall: (): Promise<{ ok: boolean; message?: string }> => ipcRenderer.invoke('app:updateInstall'),
+  onUpdateStatus: (
+    callback: (payload: {
+      phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'
+      version?: string
+      progress?: number
+      message?: string
+    }) => void
+  ): (() => void) => {
+    const listener = (
+      _event: unknown,
+      payload: {
+        phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'
+        version?: string
+        progress?: number
+        message?: string
+      }
+    ): void => callback(payload)
+    ipcRenderer.on('app:update-status', listener)
+    return () => ipcRenderer.removeListener('app:update-status', listener)
+  }
 }
 
 const portraitApi = {

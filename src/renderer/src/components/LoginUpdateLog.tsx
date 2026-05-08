@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { JSX } from 'react'
 import type { UpdateLogPayload } from '@shared/update-log'
 import bundledRaw from '../../../../update-log.json'
@@ -8,6 +8,8 @@ import { backend } from '../lib/backend'
 
 const POLL_MS = 2 * 60 * 1000
 const POLL_MINUTES = Math.max(1, Math.round(POLL_MS / 60000))
+const REMOTE_TIMEOUT_MS = 8000
+const CACHE_KEY = 'ecs_update_log_cache_v1'
 const bundledUpdateLog = bundledRaw as UpdateLogPayload
 
 type UpdateFeedConfig = { githubRepo?: string; branch?: string }
@@ -255,26 +257,50 @@ function parsePayload(raw: unknown): UpdateLogPayload | null {
 }
 
 async function fetchRemote(url: string): Promise<UpdateLogPayload | null> {
+  const controller = new AbortController()
+  const timeoutId = window.setTimeout(() => controller.abort(), REMOTE_TIMEOUT_MS)
   const sep = url.includes('?') ? '&' : '?'
-  const res = await fetch(`${url}${sep}t=${Date.now()}`, { cache: 'no-store' })
-  if (!res.ok) return null
-  return parsePayload(await res.json())
+  try {
+    const res = await fetch(`${url}${sep}t=${Date.now()}`, {
+      cache: 'no-store',
+      signal: controller.signal,
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        Pragma: 'no-cache'
+      }
+    })
+    if (!res.ok) return null
+    return parsePayload(await res.json())
+  } finally {
+    window.clearTimeout(timeoutId)
+  }
 }
 
 async function fetchRemoteFromGithubApi(url: string): Promise<UpdateLogPayload | null> {
+  const controller = new AbortController()
+  const timeoutId = window.setTimeout(() => controller.abort(), REMOTE_TIMEOUT_MS)
   const sep = url.includes('?') ? '&' : '?'
-  const res = await fetch(`${url}${sep}t=${Date.now()}`, {
-    cache: 'no-store',
-    headers: { Accept: 'application/vnd.github+json' }
-  })
-  if (!res.ok) return null
-  const payload = (await res.json()) as { content?: unknown; encoding?: unknown }
-  if (payload.encoding !== 'base64' || typeof payload.content !== 'string') return null
   try {
-    const decoded = atob(payload.content.replace(/\n/g, ''))
-    return parsePayload(JSON.parse(decoded) as unknown)
-  } catch {
-    return null
+    const res = await fetch(`${url}${sep}t=${Date.now()}`, {
+      cache: 'no-store',
+      signal: controller.signal,
+      headers: {
+        Accept: 'application/vnd.github+json',
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        Pragma: 'no-cache'
+      }
+    })
+    if (!res.ok) return null
+    const payload = (await res.json()) as { content?: unknown; encoding?: unknown }
+    if (payload.encoding !== 'base64' || typeof payload.content !== 'string') return null
+    try {
+      const decoded = atob(payload.content.replace(/\n/g, ''))
+      return parsePayload(JSON.parse(decoded) as unknown)
+    } catch {
+      return null
+    }
+  } finally {
+    window.clearTimeout(timeoutId)
   }
 }
 
@@ -282,10 +308,23 @@ export function LoginUpdateLog(props: { className?: string; colorScheme?: LogSch
   const { className, colorScheme: rawScheme = 'default' } = props
   const colorScheme: LogScheme = rawScheme === 'bionicle' ? 'default' : rawScheme
   const tone = TONES[colorScheme] ?? TONES.default
-  const [payload, setPayload] = useState<UpdateLogPayload>(() => parsePayload(bundledUpdateLog) ?? bundledUpdateLog)
+  const [payload, setPayload] = useState<UpdateLogPayload>(() => {
+    const bundled = parsePayload(bundledUpdateLog) ?? bundledUpdateLog
+    try {
+      const cachedRaw = window.localStorage.getItem(CACHE_KEY)
+      if (!cachedRaw) return bundled
+      const cached = parsePayload(JSON.parse(cachedRaw) as unknown)
+      if (!cached) return bundled
+      return new Date(cached.updatedAt).getTime() > new Date(bundled.updatedAt).getTime() ? cached : bundled
+    } catch {
+      return bundled
+    }
+  })
   const [appVersion, setAppVersion] = useState<string>('')
   const [lastFetchAt, setLastFetchAt] = useState<Date | null>(null)
   const [fetchStatus, setFetchStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
+  const inFlightRef = useRef(false)
+  const lastFetchAtRef = useRef<number>(0)
   const config = feedRaw as UpdateFeedConfig
   const remoteUrl = (import.meta.env.VITE_UPDATE_LOG_URL as string | undefined)?.trim() || githubRawUpdateLogUrl(config)
   const remoteUrlCandidates = useCallback((): string[] => {
@@ -303,32 +342,45 @@ export function LoginUpdateLog(props: { className?: string; colorScheme?: LogSch
   }, [config.branch, config.githubRepo, remoteUrl])
 
   const refresh = useCallback(async (): Promise<void> => {
+    if (inFlightRef.current) return
+    inFlightRef.current = true
     setFetchStatus('loading')
-    let next = parsePayload(bundledUpdateLog) ?? bundledUpdateLog
-    const urls = remoteUrlCandidates()
-    if (urls.length > 0) {
-      let gotRemote = false
-      for (const url of urls) {
-        try {
-          const remote = url.includes('api.github.com')
-            ? await fetchRemoteFromGithubApi(url)
-            : await fetchRemote(url)
-          if (remote) {
-            next = remote
-            gotRemote = true
-            break
+    try {
+      let next = payload
+      const urls = remoteUrlCandidates()
+      if (urls.length > 0) {
+        let gotRemote = false
+        for (const url of urls) {
+          try {
+            const remote = url.includes('api.github.com')
+              ? await fetchRemoteFromGithubApi(url)
+              : await fetchRemote(url)
+            if (remote) {
+              next = remote
+              gotRemote = true
+              break
+            }
+          } catch {
+            // try next candidate
           }
-        } catch {
-          // try next candidate
         }
+        setFetchStatus(gotRemote ? 'ok' : 'error')
+      } else {
+        setFetchStatus('ok')
       }
-      setFetchStatus(gotRemote ? 'ok' : 'error')
-    } else {
-      setFetchStatus('ok')
+      setPayload(next)
+      try {
+        window.localStorage.setItem(CACHE_KEY, JSON.stringify(next))
+      } catch {
+        // ignore cache write errors
+      }
+      const now = Date.now()
+      lastFetchAtRef.current = now
+      setLastFetchAt(new Date(now))
+    } finally {
+      inFlightRef.current = false
     }
-    setPayload(next)
-    setLastFetchAt(new Date())
-  }, [remoteUrlCandidates])
+  }, [payload, remoteUrlCandidates])
 
   /* eslint-disable react-hooks/set-state-in-effect -- startup fetch + interval hydration intentionally fan out into local state */
   useEffect(() => {
@@ -340,7 +392,9 @@ export function LoginUpdateLog(props: { className?: string; colorScheme?: LogSch
 
   useEffect(() => {
     const onVisibility = (): void => {
-      if (document.visibilityState === 'visible') void refresh()
+      if (document.visibilityState !== 'visible') return
+      if (Date.now() - lastFetchAtRef.current < 30_000) return
+      void refresh()
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => document.removeEventListener('visibilitychange', onVisibility)
