@@ -1,6 +1,6 @@
 {
   "name": "epic-character-storage",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Desktop RPG character manager with keyword-based attack generation",
   "main": "./out/main/index.js",
   "author": "",

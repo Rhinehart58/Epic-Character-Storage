@@ -64,6 +64,27 @@ npm run build:mac
 npm run build:win
 ```
 
+## GitHub downloads (Releases)
+
+You can publish downloadable installers directly on GitHub Releases.
+
+1. Bump version:
+   ```bash
+   npm run version:patch
+   ```
+2. Commit and push your changes.
+3. Create and push a release tag:
+   ```bash
+   git tag v1.0.1
+   git push origin v1.0.1
+   ```
+4. GitHub Actions `Release` workflow will build and attach:
+   - macOS: `.dmg` (+ `.zip`)
+   - Windows: `setup.exe`
+   - Linux: `.AppImage` + `.deb`
+
+Downloads will appear in your repository's [Releases](https://github.com/Rhinehart58/Epic-Character-Storage/releases) page.
+
 ## Architecture notes
 
 - `src/shared/character-types.ts`: core app domain model.
