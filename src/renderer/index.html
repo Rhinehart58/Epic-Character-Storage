@@ -3,15 +3,173 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Epic Character Storage</title>
+    <title>Tactile</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Audiowide&family=DM+Sans:wght@400;500;600;700&family=Orbitron:wght@500;700&family=Share+Tech+Mono&display=swap"
       rel="stylesheet"
     />
+    <style>
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        background: #020617;
+      }
+      body.booting {
+        overflow: hidden;
+      }
+      body.booting #root {
+        opacity: 0;
+      }
+      #root {
+        transition: opacity 180ms ease;
+      }
+      #boot-splash {
+        position: fixed;
+        inset: 0;
+        z-index: 99999;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--boot-bg, #020617);
+        color: var(--boot-fg-primary, #f8fafc);
+        font-family: "DM Sans", system-ui, -apple-system, Segoe UI, sans-serif;
+        opacity: 1;
+        transition: opacity 320ms ease;
+      }
+      #boot-splash::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: var(--boot-scrim, rgba(2, 6, 23, 0.22));
+        pointer-events: none;
+      }
+      #boot-splash.is-ready {
+        opacity: 0;
+      }
+      .boot-inner {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 14px;
+      }
+      .boot-mark {
+        width: 72px;
+        height: 72px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid var(--boot-accent-soft, rgba(34, 211, 238, 0.45));
+        border-radius: 16px;
+        background: var(--boot-accent-bg, rgba(34, 211, 238, 0.12));
+        color: var(--boot-accent, #22d3ee);
+        animation: boot-spin 1.6s linear infinite;
+      }
+      .boot-label {
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 0.24em;
+        text-transform: uppercase;
+        color: var(--boot-fg-secondary, rgba(226, 232, 240, 0.9));
+        text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+      }
+      .boot-text {
+        font-size: 15px;
+        font-weight: 600;
+        color: var(--boot-fg-primary, rgba(241, 245, 249, 0.96));
+        text-shadow: 0 1px 1px rgba(0, 0, 0, 0.24);
+      }
+      html[data-boot-tone="light"] {
+        --boot-bg: #eff6ff;
+        --boot-fg-primary: #0f172a;
+        --boot-fg-secondary: #334155;
+        --boot-scrim: rgba(255, 255, 255, 0.04);
+      }
+      html[data-boot-tone="dark"] {
+        --boot-bg: #020617;
+        --boot-fg-primary: #f8fafc;
+        --boot-fg-secondary: rgba(226, 232, 240, 0.9);
+        --boot-scrim: rgba(2, 6, 23, 0.24);
+      }
+      html[data-boot-theme="default"] { --boot-bg: #020617; --boot-accent: #22d3ee; --boot-accent-bg: rgba(34, 211, 238, 0.12); --boot-accent-soft: rgba(34, 211, 238, 0.45); }
+      html[data-boot-theme="violet"] { --boot-bg: #0f172a; --boot-accent: #7dd3fc; --boot-accent-bg: rgba(125, 211, 252, 0.12); --boot-accent-soft: rgba(125, 211, 252, 0.5); }
+      html[data-boot-theme="teal"] { --boot-bg: #e6ecef; --boot-accent: #0f766e; --boot-accent-bg: rgba(15, 118, 110, 0.12); --boot-accent-soft: rgba(15, 118, 110, 0.45); }
+      html[data-boot-theme="sunset"] { --boot-bg: #1f1140; --boot-accent: #ec4899; --boot-accent-bg: rgba(236, 72, 153, 0.15); --boot-accent-soft: rgba(236, 72, 153, 0.56); }
+      html[data-boot-theme="wii"] { --boot-bg: #f6fbff; --boot-accent: #38bdf8; --boot-accent-bg: rgba(56, 189, 248, 0.14); --boot-accent-soft: rgba(56, 189, 248, 0.5); }
+      html[data-boot-theme="ps3"] { --boot-bg: #030712; --boot-accent: #38bdf8; --boot-accent-bg: rgba(56, 189, 248, 0.12); --boot-accent-soft: rgba(56, 189, 248, 0.45); }
+      html[data-boot-theme="xbox360"] { --boot-bg: #090b08; --boot-accent: #84cc16; --boot-accent-bg: rgba(132, 204, 22, 0.14); --boot-accent-soft: rgba(132, 204, 22, 0.48); }
+      html[data-boot-theme="cube"] { --boot-bg: #120a25; --boot-accent: #818cf8; --boot-accent-bg: rgba(129, 140, 248, 0.16); --boot-accent-soft: rgba(129, 140, 248, 0.56); }
+      html[data-boot-theme="wiiu"] { --boot-bg: #e6fbff; --boot-accent: #06b6d4; --boot-accent-bg: rgba(6, 182, 212, 0.14); --boot-accent-soft: rgba(6, 182, 212, 0.5); }
+      html[data-boot-theme="3ds"] { --boot-bg: #2c0a12; --boot-accent: #f43f5e; --boot-accent-bg: rgba(244, 63, 94, 0.16); --boot-accent-soft: rgba(244, 63, 94, 0.58); }
+      html[data-boot-theme="bee"] { --boot-bg: #1d1300; --boot-accent: #f59e0b; --boot-accent-bg: rgba(245, 158, 11, 0.16); --boot-accent-soft: rgba(245, 158, 11, 0.56); }
+      html[data-boot-theme="teal"],
+      html[data-boot-theme="wii"],
+      html[data-boot-theme="wiiu"] {
+        --boot-fg-primary: #0f172a;
+        --boot-fg-secondary: #334155;
+        --boot-scrim: rgba(255, 255, 255, 0.06);
+      }
+      @keyframes boot-spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #boot-splash {
+          transition: none;
+        }
+        .boot-mark {
+          animation: none;
+        }
+      }
+    </style>
+    <script>
+      (() => {
+        try {
+          const query = new URLSearchParams(window.location.search);
+          let colorScheme = query.get('bootTheme') || 'default';
+          let themeMode = query.get('bootTone') || 'system';
+          if (!query.get('bootTheme') || !query.get('bootTone')) {
+            const raw = window.localStorage.getItem('ecs-appearance-guest-v1');
+            if (raw) {
+              const parsed = JSON.parse(raw);
+              if (typeof parsed?.colorScheme === 'string') colorScheme = parsed.colorScheme;
+              if (typeof parsed?.themeMode === 'string') themeMode = parsed.themeMode;
+            }
+          }
+          if (!['default', 'violet', 'teal', 'sunset', 'wii', 'ps3', 'xbox360', 'cube', 'wiiu', '3ds', 'bee'].includes(colorScheme)) {
+            colorScheme = 'default';
+          }
+          const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+          const tone = themeMode === 'dark' ? 'dark' : themeMode === 'light' ? 'light' : prefersDark ? 'dark' : 'light';
+          document.documentElement.dataset.bootTheme = colorScheme;
+          document.documentElement.dataset.bootTone = tone;
+        } catch {
+          document.documentElement.dataset.bootTheme = 'default';
+          document.documentElement.dataset.bootTone = 'dark';
+        }
+      })();
+    </script>
   </head>
-  <body>
+  <body class="booting">
+    <div id="boot-splash" aria-live="polite" aria-label="Application startup">
+      <div class="boot-inner">
+        <span class="boot-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32" width="36" height="36" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M16 4.5L19.6 12.4L27.5 16L19.6 19.6L16 27.5L12.4 19.6L4.5 16L12.4 12.4L16 4.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+            <path d="M16 10V14.1" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            <path d="M16 17.9V22" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            <path d="M10 16H14.1" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            <path d="M17.9 16H22" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            <rect x="14.6" y="14.6" width="2.8" height="2.8" transform="rotate(45 16 16)" fill="currentColor" />
+          </svg>
+        </span>
+        <div class="boot-label">Tactile</div>
+        <div class="boot-text">Loading...</div>
+      </div>
+    </div>
     <div id="root"></div>
     <script type="module" src="./src/main.tsx"></script>
   </body>

@@ -82,6 +82,8 @@ declare global {
     }
     appApi: {
       getVersion: () => Promise<string>
+      getPrefs: (keys: string[]) => Promise<Record<string, string | null>>
+      setPrefs: (entries: Record<string, string | null>) => Promise<{ ok: true }>
     }
     portraitApi: {
       choose: (payload: { characterId: string | null }) => Promise<{

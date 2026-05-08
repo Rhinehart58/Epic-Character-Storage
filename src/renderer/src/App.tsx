@@ -40,12 +40,19 @@ import {
 import { DndSheetSection, ecsPortraitSrc, emptyManualAttackDraft, type ManualAttackDraft } from './components/DndSheetSection'
 import { LoginUpdateLog } from './components/LoginUpdateLog'
 import { backend } from './lib/backend'
+import feedRaw from '../../../update-feed.config.json'
 import {
   clearUiCopyOverrides,
-  UI_COPY_DEFAULTS,
+  isMultilineKey,
   loadUiCopyOverrides,
+  mergeUiCopyOverrides,
   persistUiCopyOverrides,
   resolveUiCopy,
+  UI_COPY_DEFAULTS,
+  UI_COPY_GROUPS,
+  UI_COPY_KEYS,
+  UI_COPY_META,
+  UI_COPY_STORAGE_KEY,
   type UiCopyKey,
   type UiCopyOverrides
 } from './lib/ui-copy'
@@ -77,12 +84,72 @@ type BattleDraft = {
 }
 
 const GUEST_APPEARANCE_KEY = 'ecs-appearance-guest-v1'
+const REMEMBER_LOGIN_KEY = 'ecs_remember_login_v1'
+const PREF_REMEMBER_LOGIN = 'rememberLogin'
+const PREF_GUEST_APPEARANCE = 'guestAppearance'
+const UPDATE_PROMPT_DISMISSED_KEY = 'ecs_update_prompt_dismissed_v1'
+const STARTUP_SPLASH_DURATION_KEY = 'ecs_startup_splash_ms_v1'
+const UPDATE_CHECK_MS = 15 * 60 * 1000
+
+type UpdateFeedConfig = { githubRepo?: string; branch?: string }
+
+function normalizeVersionTag(value: unknown): string | null {
+  if (typeof value !== 'string') return null
+  const trimmed = value.trim().replace(/^v/i, '')
+  const match = /^(\d+)(?:\.(\d+))?(?:\.(\d+))?/.exec(trimmed)
+  if (!match) return null
+  const major = Number(match[1] ?? '0')
+  const minor = Number(match[2] ?? '0')
+  const patch = Number(match[3] ?? '0')
+  return `${major}.${minor}.${patch}`
+}
+
+function compareVersionTag(a: string, b: string): number {
+  const pa = a.split('.').map((part) => Number(part) || 0)
+  const pb = b.split('.').map((part) => Number(part) || 0)
+  for (let i = 0; i < 3; i += 1) {
+    if ((pa[i] ?? 0) > (pb[i] ?? 0)) return 1
+    if ((pa[i] ?? 0) < (pb[i] ?? 0)) return -1
+  }
+  return 0
+}
+
+function parseStartupSplashDuration(value: unknown): number {
+  if (value === 1200 || value === 2200 || value === 3000 || value === 4500) return value
+  if (typeof value === 'string') {
+    const n = Number(value)
+    if (n === 1200 || n === 2200 || n === 3000 || n === 4500) return n
+  }
+  return 3000
+}
 
 /** Human-readable names for vertical stack regions (layout editor + screen readers). */
 function ecsWorkspaceRegionLabel(region: WorkspaceFlowRegion): string {
   if (region === 'header') return 'Title bar'
   if (region === 'status') return 'Status strip'
   return 'Campaign and editor'
+}
+
+/** Small glyph + accent class for an activity feed entry, keyed by `SyncActivityKind`. */
+function activityKindGlyph(kind: ActivityFeedEntry['kind']): { icon: string; tone: string; label: string } {
+  switch (kind) {
+    case 'character_created':
+      return { icon: '＋', tone: 'text-emerald-600 dark:text-emerald-300', label: 'Character created' }
+    case 'character_updated':
+      return { icon: '✎', tone: 'text-sky-600 dark:text-sky-300', label: 'Character updated' }
+    case 'character_deleted':
+      return { icon: '×', tone: 'text-rose-600 dark:text-rose-300', label: 'Character deleted' }
+    case 'battle_updated':
+      return { icon: '⚔', tone: 'text-amber-600 dark:text-amber-300', label: 'Battle updated' }
+    case 'campaign_created':
+      return { icon: '★', tone: 'text-violet-600 dark:text-violet-300', label: 'Campaign created' }
+    case 'campaign_joined':
+      return { icon: '↗', tone: 'text-indigo-600 dark:text-indigo-300', label: 'Campaign joined' }
+    case 'campaign_left':
+      return { icon: '↘', tone: 'text-zinc-500 dark:text-zinc-400', label: 'Campaign left' }
+    default:
+      return { icon: '•', tone: 'text-slate-500 dark:text-slate-400', label: 'Activity' }
+  }
 }
 
 /** Full-bleed palette ambience — shared by the signed-in shell and the login route so themes read consistently. */
@@ -166,6 +233,50 @@ function EcsPaletteBackdrop(): JSX.Element {
   )
 }
 
+type LogoMarkVariant = 'ledger' | 'crest' | 'spark'
+const ACTIVE_LOGO_MARK: LogoMarkVariant = 'spark'
+const LOGO_MARK_VARIANTS: LogoMarkVariant[] = ['ledger', 'crest', 'spark']
+
+function EcsLogoMark({ className, variant = ACTIVE_LOGO_MARK }: { className?: string; variant?: LogoMarkVariant }): JSX.Element {
+  return (
+    <span
+      className={cn(
+        'ecs-logo-mark inline-flex h-10 w-10 items-center justify-center rounded-md border border-current/30 bg-current/10',
+        className
+      )}
+      aria-hidden
+    >
+      {variant === 'ledger' ? (
+        <svg viewBox="0 0 32 32" className="h-6 w-6" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M7 7H25V25H7V7Z" stroke="currentColor" strokeWidth="2" />
+          <path d="M10.5 12H21.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M10.5 16H18.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M10.5 20H20.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <circle cx="22.5" cy="20.5" r="2.2" fill="currentColor" />
+        </svg>
+      ) : null}
+      {variant === 'crest' ? (
+        <svg viewBox="0 0 32 32" className="h-6 w-6" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M16 5.5L25 9V16.5C25 21.2 21.6 25.1 16 26.3C10.4 25.1 7 21.2 7 16.5V9L16 5.5Z" stroke="currentColor" strokeWidth="2" />
+          <path d="M12 13.5L16 10L20 13.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <path d="M11.5 18H20.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <circle cx="16" cy="21.5" r="1.6" fill="currentColor" />
+        </svg>
+      ) : null}
+      {variant === 'spark' ? (
+        <svg viewBox="0 0 32 32" className="h-6 w-6" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M16 4.5L19.6 12.4L27.5 16L19.6 19.6L16 27.5L12.4 19.6L4.5 16L12.4 12.4L16 4.5Z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round" />
+          <path d="M16 10V14.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M16 17.9V22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M10 16H14.1" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <path d="M17.9 16H22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+          <rect x="14.6" y="14.6" width="2.8" height="2.8" transform="rotate(45 16 16)" fill="currentColor" />
+        </svg>
+      ) : null}
+    </span>
+  )
+}
+
 function accountAppearanceKey(accountId: string): string {
   return `ecs-appearance-account-${accountId}-v1`
 }
@@ -232,36 +343,231 @@ function parseThemeMode(value: unknown): ThemeMode | null {
   return null
 }
 
+type ThemeSchemeChoice = { id: ColorScheme; title: string; blurb: string }
+
 /** Header Theme menu rows (excludes secret `bee`; appended at runtime when unlocked). */
-const THEME_SCHEME_CHOICES_BASE: { id: ColorScheme; title: string; blurb: string }[] = [
-  { id: 'default', title: 'Default', blurb: 'Plain light/dark chrome' },
-  { id: 'violet', title: 'Aero meadow', blurb: 'Vista/7 glass: cool sky, soft grass haze, no neon' },
-  { id: 'teal', title: 'Classic chrome', blurb: 'Gray bevels, teal desktop' },
-  { id: 'sunset', title: 'Y2K neon', blurb: 'Hot magenta and cyan — MySpace-era loud, not Aero' },
-  { id: 'wii', title: 'Wii', blurb: 'Silver bar, soft channel grid' },
-  { id: 'ps3', title: 'PS3 (XMB)', blurb: 'Cross Media Bar: black field, vertical guides, silver-blue wave' },
+const THEME_SCHEME_CHOICES_BASE: ThemeSchemeChoice[] = [
+  { id: 'default', title: 'Default', blurb: 'Neutral slate chrome for general desktop readability.' },
+  { id: 'violet', title: 'Aero meadow', blurb: 'Windows Vista Aero cues: glass highlights, soft sky gradients.' },
+  { id: 'teal', title: 'Classic chrome', blurb: 'Win98-inspired bevels, flat gray chrome, teal desktop field.' },
+  { id: 'sunset', title: 'Y2K neon', blurb: 'Late-90s/early-2000s web shimmer: neon, chrome, stars.' },
+  { id: 'wii', title: 'Wii', blurb: 'Wii Channel Menu style: clean white cards, soft cyan accents.' },
+  { id: 'ps3', title: 'PS3 (XMB)', blurb: 'XrossMediaBar-inspired dark field with flowing wave guides.' },
   {
     id: 'xbox360',
     title: 'Xbox 360 (NXE)',
-    blurb: 'New Xbox Experience: charcoal blades, Xbox green glow, horizontal sweep'
+    blurb: 'NXE-inspired charcoal cards with Xbox-green edge glow.'
   },
   {
     id: 'cube',
     title: 'GameCube',
-    blurb: 'BIOS-era indigo glass, silver highlights, warm orange sphere glow (not retail purple)'
+    blurb: 'Indigo BIOS-era cube glass with metallic highlights.'
   },
-  { id: 'wiiu', title: 'Wii U', blurb: 'Flat cyan tiles' },
-  { id: '3ds', title: '3DS', blurb: 'Candy red, tight corners' }
+  { id: 'wiiu', title: 'Wii U', blurb: 'Flat cyan tile language over dark UI scaffolding.' },
+  { id: '3ds', title: '3DS', blurb: 'Glossy red handheld chrome with tighter panel seams.' }
 ]
 
-const BEE_THEME_CHOICE: { id: ColorScheme; title: string; blurb: string } = {
+const AUTO_THEME_MODE_BY_SCHEME: Partial<Record<ColorScheme, ThemeMode>> = {
+  teal: 'light',
+  wii: 'light',
+  wiiu: 'light',
+  bee: 'light',
+  ps3: 'dark',
+  xbox360: 'dark',
+  cube: 'dark'
+}
+
+const BEE_THEME_CHOICE: ThemeSchemeChoice = {
   id: 'bee',
   title: 'Honey bee',
   blurb: 'Amber hive chrome and honeycomb field — unlock from Settings → Secret codes.'
 }
 
+type ThemeSourceRef = { cue: string; sourceLabel: string; sourceUrl: string }
+
+/** External references used to keep each palette distinct from its source era/device language. */
+const THEME_SOURCE_REFS: Record<ColorScheme, ThemeSourceRef> = {
+  default: {
+    cue: 'Neutral modern desktop baseline for readability-first workflows.',
+    sourceLabel: 'Project baseline',
+    sourceUrl: 'https://cursor.com/docs'
+  },
+  violet: {
+    cue: 'Glass translucency, gentle gradients, and reflective highlights (Aero).',
+    sourceLabel: 'Windows Aero overview',
+    sourceUrl: 'https://en.wikipedia.org/wiki/Windows_Aero'
+  },
+  teal: {
+    cue: 'Win9x-style hard bevels, low-radius chrome, and high contrast separators.',
+    sourceLabel: 'Windows 98 visual style reference',
+    sourceUrl: 'https://en.wikipedia.org/wiki/Windows_98'
+  },
+  sunset: {
+    cue: 'Y2K web motifs: chrome gradients, neon accents, star/glitter microdecor.',
+    sourceLabel: 'Y2K aesthetic guide',
+    sourceUrl: 'https://aesthetic.fyi/y2k'
+  },
+  wii: {
+    cue: 'Channel-grid metaphor with evenly weighted rounded tiles.',
+    sourceLabel: 'Iwata Asks - Wii Channels',
+    sourceUrl: 'https://iwataasks.nintendo.com/interviews/wii/wii_channels/0/1/'
+  },
+  ps3: {
+    cue: 'XMB horizontal categories and layered wave backdrop motion.',
+    sourceLabel: 'XrossMediaBar',
+    sourceUrl: 'https://en.wikipedia.org/wiki/XrossMediaBar'
+  },
+  xbox360: {
+    cue: 'NXE card-like panes, horizontal sweep, and green status highlights.',
+    sourceLabel: 'New Xbox Experience (hands-on)',
+    sourceUrl: 'https://www.pcworld.com/article/531800/nxe_part_one.html'
+  },
+  cube: {
+    cue: 'Cube-centric indigo BIOS visuals with reflective volumetric depth.',
+    sourceLabel: 'IGN GameCube front-end coverage',
+    sourceUrl: 'https://www.ign.com/articles/2001/08/17/interface-with-gamecube-gcn'
+  },
+  wiiu: {
+    cue: 'Clean tile-based launcher patterns with restrained cyan accents.',
+    sourceLabel: 'Wii U UI overview',
+    sourceUrl: 'https://www.nintendolife.com/news/2014/09/wii_u_system_update_520_brings_folders_new_ui_design_and_more'
+  },
+  '3ds': {
+    cue: 'Handheld-like compact framing, glossy red shell accents, tighter spacing.',
+    sourceLabel: 'Nintendo 3DS operations manual',
+    sourceUrl: 'https://fs-prod-cdn.nintendo-europe.com/media/downloads/support_1/nintendo_3ds_14/Nintendo3DS_OperationsManual_UK.pdf'
+  },
+  bee: {
+    cue: 'Original house palette: warm amber hive gloss and honeycomb texture.',
+    sourceLabel: 'Project custom theme',
+    sourceUrl: 'https://cursor.com/docs'
+  }
+}
+
+type ProfessionalUiPreset = {
+  id: 'notion' | 'linear' | 'github' | 'atlassian'
+  title: string
+  blurb: string
+  sourceLabel: string
+  sourceUrl: string
+  settings: {
+    colorScheme: ColorScheme
+    themeMode: ThemeMode
+    useThemeLayout: boolean
+    cornerStyle: CornerStyle
+    chromeWeight: ChromeWeight
+    workspaceDensity: WorkspaceDensity
+    sidebarPlacement: SidebarPlacement
+    sidebarWidth: SidebarWidthPreset
+  }
+}
+
+const PROFESSIONAL_UI_PRESETS: ProfessionalUiPreset[] = [
+  {
+    id: 'notion',
+    title: 'Notion-like',
+    blurb: 'Calm warm-neutral layout, generous spacing, and quiet chrome.',
+    sourceLabel: 'Notion page design notes',
+    sourceUrl: 'https://www.notion.com/blog/updating-the-design-of-notion-pages',
+    settings: {
+      colorScheme: 'default',
+      themeMode: 'light',
+      useThemeLayout: false,
+      cornerStyle: 'soft',
+      chromeWeight: 'light',
+      workspaceDensity: 'comfortable',
+      sidebarPlacement: 'left',
+      sidebarWidth: 'medium'
+    }
+  },
+  {
+    id: 'linear',
+    title: 'Linear-like',
+    blurb: 'Compact dark workspace, crisp borders, keyboard-first density.',
+    sourceLabel: 'Linear redesign notes',
+    sourceUrl: 'https://linear.app/now/how-we-redesigned-the-linear-ui',
+    settings: {
+      colorScheme: 'default',
+      themeMode: 'dark',
+      useThemeLayout: false,
+      cornerStyle: 'sharp',
+      chromeWeight: 'standard',
+      workspaceDensity: 'cozy',
+      sidebarPlacement: 'left',
+      sidebarWidth: 'compact'
+    }
+  },
+  {
+    id: 'github',
+    title: 'GitHub Primer-like',
+    blurb: 'Balanced contrast, conservative radius, efficiency-focused defaults.',
+    sourceLabel: 'GitHub Primer principles',
+    sourceUrl: 'https://primer.github.io/design/guides/introduction/',
+    settings: {
+      colorScheme: 'default',
+      themeMode: 'system',
+      useThemeLayout: false,
+      cornerStyle: 'soft',
+      chromeWeight: 'light',
+      workspaceDensity: 'comfortable',
+      sidebarPlacement: 'left',
+      sidebarWidth: 'medium'
+    }
+  },
+  {
+    id: 'atlassian',
+    title: 'Atlassian-like',
+    blurb: 'Cohesive productivity UI with tighter layout and stronger structure.',
+    sourceLabel: 'Atlassian design system',
+    sourceUrl: 'https://atlassian.design/get-started/about-atlassian-design-system',
+    settings: {
+      colorScheme: 'default',
+      themeMode: 'light',
+      useThemeLayout: false,
+      cornerStyle: 'sharp',
+      chromeWeight: 'standard',
+      workspaceDensity: 'cozy',
+      sidebarPlacement: 'left',
+      sidebarWidth: 'medium'
+    }
+  }
+]
+
 const SESSION_TIMEOUT_MS = 20 * 60 * 1000
 const DRAG_HINT_DISMISSED_KEY = 'ecs.dragHint.dismissed.v1'
+const DEV_ACCOUNT_EMAIL = 'rhinedev@local.epic'
+const DEV_LAB_FLAGS_KEY = 'ecs.dev.lab.flags.v1'
+
+type DevLabFlags = {
+  showUiBounds: boolean
+  forceReducedMotion: boolean
+  verboseActivityFeed: boolean
+  enableCommandPalette: boolean
+}
+
+const DEFAULT_DEV_LAB_FLAGS: DevLabFlags = {
+  showUiBounds: false,
+  forceReducedMotion: false,
+  verboseActivityFeed: false,
+  enableCommandPalette: true
+}
+
+function loadDevLabFlags(): DevLabFlags {
+  if (typeof window === 'undefined') return DEFAULT_DEV_LAB_FLAGS
+  try {
+    const raw = window.localStorage.getItem(DEV_LAB_FLAGS_KEY)
+    if (!raw) return DEFAULT_DEV_LAB_FLAGS
+    const parsed = JSON.parse(raw) as Partial<DevLabFlags>
+    return {
+      showUiBounds: Boolean(parsed.showUiBounds),
+      forceReducedMotion: Boolean(parsed.forceReducedMotion),
+      verboseActivityFeed: Boolean(parsed.verboseActivityFeed),
+      enableCommandPalette: typeof parsed.enableCommandPalette === 'boolean' ? parsed.enableCommandPalette : true
+    }
+  } catch {
+    return DEFAULT_DEV_LAB_FLAGS
+  }
+}
 const DND_CONDITIONS = [
   'Blinded',
   'Charmed',
@@ -597,6 +903,8 @@ function DevToolsPanel(props: {
   children: ReactNode
   uiCopyOverrides: UiCopyOverrides
   setUiCopyOverrides: Dispatch<SetStateAction<UiCopyOverrides>>
+  devLabFlags: DevLabFlags
+  setDevLabFlags: Dispatch<SetStateAction<DevLabFlags>>
 }): JSX.Element {
   const {
     onClose,
@@ -657,12 +965,30 @@ function DevToolsPanel(props: {
     open,
     children,
     uiCopyOverrides,
-    setUiCopyOverrides
+    setUiCopyOverrides,
+    devLabFlags,
+    setDevLabFlags
   } = props
 
   const [storageKeys, setStorageKeys] = useState<{ key: string; value: string }[]>([])
   const [seedBusy, setSeedBusy] = useState(false)
+  const [copyFilter, setCopyFilter] = useState('')
+  const [copyShowOverriddenOnly, setCopyShowOverriddenOnly] = useState(false)
+  const [copyImportText, setCopyImportText] = useState('')
+  const [copyImportError, setCopyImportError] = useState<string | null>(null)
+  const [showCopyImport, setShowCopyImport] = useState(false)
 
+  const overriddenCopyCount = useMemo(
+    () => Object.values(uiCopyOverrides).filter((v) => typeof v === 'string' && v.trim().length > 0).length,
+    [uiCopyOverrides]
+  )
+  const availableThemeChoices = useMemo(
+    () => [...THEME_SCHEME_CHOICES_BASE, ...(beeThemeUnlocked ? [BEE_THEME_CHOICE] : [])],
+    [beeThemeUnlocked]
+  )
+  const activeThemeRef = THEME_SOURCE_REFS[colorScheme]
+
+  /* eslint-disable react-hooks/set-state-in-effect -- storage inspector snapshot is intentionally refreshed when tab opens */
   useEffect(() => {
     if (activeTab !== 'storage') return
     const collected: { key: string; value: string }[] = []
@@ -674,6 +1000,7 @@ function DevToolsPanel(props: {
     }
     setStorageKeys(collected.sort((a, b) => a.key.localeCompare(b.key)))
   }, [activeTab])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   async function seedSampleCharacters(): Promise<void> {
     if (!activeAccountId) {
@@ -814,7 +1141,7 @@ function DevToolsPanel(props: {
 
   if (!open) return <>{children}</>
 
-  const tabBtn = (id: DevPanelTab, label: string): JSX.Element => (
+  const tabBtn = (id: DevPanelTab, label: ReactNode): JSX.Element => (
     <button
       type="button"
       role="tab"
@@ -848,12 +1175,17 @@ function DevToolsPanel(props: {
     </button>
   )
 
+  const openThemeMenu = (): void => {
+    setShowSettingsMenu(false)
+    setShowThemeMenu(true)
+  }
+
   return (
     <div
       className={cn(
         'flex w-full min-w-0 flex-col gap-3 overflow-hidden',
         'max-lg:h-[calc(100dvh-5rem)] max-lg:max-h-[calc(100dvh-5rem)]',
-        'lg:grid lg:h-[calc(100dvh-3.5rem)] lg:max-h-[calc(100dvh-3.5rem)] lg:grid-cols-[10.5rem_minmax(0,1fr)_minmax(17rem,22rem)] lg:grid-rows-1 lg:gap-4'
+        'lg:grid lg:h-[calc(100dvh-3.5rem)] lg:max-h-[calc(100dvh-3.5rem)] lg:grid-cols-[10.5rem_minmax(0,1fr)_minmax(22rem,28rem)] lg:grid-rows-1 lg:gap-4'
       )}
     >
       <aside
@@ -864,9 +1196,14 @@ function DevToolsPanel(props: {
         )}
       >
         <div className="flex shrink-0 items-center justify-between gap-2 border-b border-zinc-300 pb-2 dark:border-zinc-600">
-          <span className="text-[11px] font-black uppercase tracking-[0.14em] text-zinc-600 dark:text-zinc-300">
-            Workshop
-          </span>
+          <div className="min-w-0">
+            <span className="text-[11px] font-black uppercase tracking-[0.14em] text-zinc-600 dark:text-zinc-300">
+              Workshop
+            </span>
+            <div className="truncate text-[9px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+              Developer account only
+            </div>
+          </div>
           <button
             type="button"
             onClick={onClose}
@@ -889,7 +1226,26 @@ function DevToolsPanel(props: {
           {tabBtn('theme', 'Theme')}
           {tabBtn('storage', 'Storage')}
           {tabBtn('data', 'Data')}
-          {tabBtn('strings', 'UI copy')}
+          {tabBtn(
+            'strings',
+            overriddenCopyCount > 0 ? (
+              <span className="flex items-center justify-between gap-2">
+                <span>UI copy</span>
+                <span
+                  className={cn(
+                    'inline-flex min-w-[1.1rem] items-center justify-center rounded-full px-1 text-[9px] font-black tabular-nums',
+                    activeTab === 'strings'
+                      ? 'bg-white/20 text-white dark:bg-zinc-900/30 dark:text-zinc-900'
+                      : 'bg-amber-500 text-white dark:bg-amber-400 dark:text-zinc-900'
+                  )}
+                >
+                  {overriddenCopyCount}
+                </span>
+              </span>
+            ) : (
+              'UI copy'
+            )
+          )}
         </nav>
       </aside>
 
@@ -909,15 +1265,14 @@ function DevToolsPanel(props: {
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-3 sm:p-4 md:p-5">
           {activeTab === 'workbench' ? (
             <div className="mx-auto flex max-w-6xl flex-col gap-6">
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-4">
                 <div className="space-y-3">
-                  <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400">
+                  <h3 className="ecs-ui-section-title text-zinc-500 dark:text-zinc-400">
                     Masks & menus
                   </h3>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-3">
                     {bigAction('Open Theme menu', () => {
-                      setShowSettingsMenu(false)
-                      setShowThemeMenu(true)
+                      openThemeMenu()
                     })}
                     {bigAction('Open Settings', () => {
                       setShowThemeMenu(false)
@@ -931,10 +1286,10 @@ function DevToolsPanel(props: {
                   </div>
                 </div>
                 <div className="space-y-3">
-                  <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400">
+                  <h3 className="ecs-ui-section-title text-zinc-500 dark:text-zinc-400">
                     Jump in the UI
                   </h3>
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-3">
                     {bigAction('Home tab', () => setWorkspaceTab('home'), 'accent')}
                     {bigAction('Sheet tab', () => setWorkspaceTab('sheet'), 'accent')}
                     {bigAction('Battle tab', () => setWorkspaceTab('battle'), 'accent')}
@@ -943,10 +1298,10 @@ function DevToolsPanel(props: {
               </div>
 
               <div className="rounded-2xl border-2 border-zinc-300 bg-white p-4 dark:border-zinc-600 dark:bg-zinc-900">
-                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400">
+                <h3 className="ecs-ui-section-title text-zinc-500 dark:text-zinc-400">
                   Chrome (no rebuild for these)
                 </h3>
-                <div className="mt-4 grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                <div className="mt-4 grid gap-4">
                   <SettingsField label="Corners" hint="Clip-path era vs soft rectangles." htmlFor="wb-corners">
                     <select
                       id="wb-corners"
@@ -1067,7 +1422,70 @@ function DevToolsPanel(props: {
               </div>
 
               <div className="rounded-2xl border-2 border-zinc-300 bg-zinc-100/50 p-4 dark:border-zinc-600 dark:bg-zinc-900/40">
-                <h3 className="text-xs font-black uppercase tracking-[0.2em] text-zinc-500 dark:text-zinc-400">
+                <h3 className="ecs-ui-section-title text-zinc-500 dark:text-zinc-400">
+                  Experiments (flags)
+                </h3>
+                <p className="mt-1 text-xs text-zinc-600 dark:text-zinc-400">
+                  Inspired by Chrome flags: optional developer-only toggles that may change diagnostics and behavior.
+                </p>
+                <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  <label className="flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-2.5 py-2 text-sm font-medium dark:border-zinc-700 dark:bg-zinc-950">
+                    <input
+                      type="checkbox"
+                      checked={devLabFlags.showUiBounds}
+                      onChange={(event) =>
+                        setDevLabFlags((prev) => ({
+                          ...prev,
+                          showUiBounds: event.target.checked
+                        }))
+                      }
+                    />
+                    Show UI bounds overlay
+                  </label>
+                  <label className="flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-2.5 py-2 text-sm font-medium dark:border-zinc-700 dark:bg-zinc-950">
+                    <input
+                      type="checkbox"
+                      checked={devLabFlags.forceReducedMotion}
+                      onChange={(event) =>
+                        setDevLabFlags((prev) => ({
+                          ...prev,
+                          forceReducedMotion: event.target.checked
+                        }))
+                      }
+                    />
+                    Force reduced motion preview
+                  </label>
+                  <label className="flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-2.5 py-2 text-sm font-medium dark:border-zinc-700 dark:bg-zinc-950">
+                    <input
+                      type="checkbox"
+                      checked={devLabFlags.verboseActivityFeed}
+                      onChange={(event) =>
+                        setDevLabFlags((prev) => ({
+                          ...prev,
+                          verboseActivityFeed: event.target.checked
+                        }))
+                      }
+                    />
+                    Verbose activity feed labels
+                  </label>
+                  <label className="flex items-center gap-2 rounded-lg border border-zinc-300 bg-white px-2.5 py-2 text-sm font-medium dark:border-zinc-700 dark:bg-zinc-950">
+                    <input
+                      type="checkbox"
+                      checked={devLabFlags.enableCommandPalette}
+                      onChange={(event) =>
+                        setDevLabFlags((prev) => ({
+                          ...prev,
+                          enableCommandPalette: event.target.checked
+                        }))
+                      }
+                    />
+                    Enable dev command palette (Cmd/Ctrl + K)
+                  </label>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border-2 border-zinc-300 bg-zinc-100/50 p-4 dark:border-zinc-600 dark:bg-zinc-900/40">
+                <h3 className="ecs-ui-section-title text-zinc-500 dark:text-zinc-400">
                   Source files — copy path
                 </h3>
                 <ul className="mt-3 grid gap-2 md:grid-cols-2">
@@ -1212,17 +1630,11 @@ function DevToolsPanel(props: {
                   onChange={(event) => setColorScheme(event.target.value as ColorScheme)}
                   className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
                 >
-                  <option value="default">default</option>
-                  <option value="violet">violet (Aero)</option>
-                  <option value="teal">teal (Win98)</option>
-                  <option value="sunset">sunset (Y2K)</option>
-                  <option value="wii">wii</option>
-                  <option value="ps3">ps3 (PS3 XMB)</option>
-                  <option value="xbox360">xbox360 (NXE)</option>
-                  <option value="cube">cube (GameCube)</option>
-                  <option value="wiiu">wiiu</option>
-                  <option value="3ds">3ds</option>
-                  {beeThemeUnlocked ? <option value="bee">bee (Honey bee)</option> : null}
+                  {availableThemeChoices.map((row) => (
+                    <option key={row.id} value={row.id}>
+                      {row.id} ({row.title})
+                    </option>
+                  ))}
                 </select>
               </SettingsField>
               <SettingsField
@@ -1271,6 +1683,21 @@ function DevToolsPanel(props: {
                   <option value="dnd">dnd</option>
                 </select>
               </SettingsField>
+
+              <div className="rounded-md border border-sky-200 bg-sky-50/80 p-3 text-xs text-slate-700 dark:border-sky-500/30 dark:bg-sky-950/20 dark:text-slate-200">
+                <div className="text-[10px] font-bold uppercase tracking-[0.18em] text-sky-700 dark:text-sky-300">
+                  Source cue
+                </div>
+                <p className="mt-1 leading-snug">{activeThemeRef.cue}</p>
+                <a
+                  href={activeThemeRef.sourceUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="mt-2 inline-flex items-center gap-1 rounded border border-sky-300 px-2 py-0.5 text-[10px] font-semibold text-sky-700 hover:bg-sky-100 dark:border-sky-400/35 dark:text-sky-200 dark:hover:bg-sky-900/40"
+                >
+                  Source: {activeThemeRef.sourceLabel}
+                </a>
+              </div>
             </div>
           ) : null}
 
@@ -1298,15 +1725,29 @@ function DevToolsPanel(props: {
                 <button
                   type="button"
                   onClick={() => {
-                    if (window.confirm('Clear all UI preferences in localStorage? Reload to re-apply defaults.')) {
-                      window.localStorage.clear()
-                      setAppMessage('Cleared localStorage. Reload to apply defaults.')
-                      setStorageKeys([])
+                    if (window.confirm('Clear ECS UI preferences in localStorage? Reload to re-apply defaults.')) {
+                      const removed: string[] = []
+                      for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
+                        const key = window.localStorage.key(i)
+                        if (!key) continue
+                        if (!key.startsWith('ecs_') && !key.startsWith('ecs.')) continue
+                        window.localStorage.removeItem(key)
+                        removed.push(key)
+                      }
+                      setAppMessage(`Cleared ${removed.length} ECS localStorage keys. Reload to apply defaults.`)
+                      const collected: { key: string; value: string }[] = []
+                      for (let i = 0; i < window.localStorage.length; i += 1) {
+                        const key = window.localStorage.key(i)
+                        if (!key) continue
+                        const value = window.localStorage.getItem(key) ?? ''
+                        collected.push({ key, value: value.length > 200 ? `${value.slice(0, 200)}…` : value })
+                      }
+                      setStorageKeys(collected.sort((a, b) => a.key.localeCompare(b.key)))
                     }
                   }}
                   className="ecs-interactive rounded-md border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
                 >
-                  Clear localStorage
+                  Clear ECS localStorage
                 </button>
                 <button
                   type="button"
@@ -1358,62 +1799,295 @@ function DevToolsPanel(props: {
           ) : null}
 
           {activeTab === 'strings' ? (
-            <div className="mx-auto max-w-3xl space-y-4">
-              <p className="text-sm leading-relaxed text-zinc-600 dark:text-zinc-400">
-                These lines feed the signed-in shell (header, sidebar, tabs, activity strip). Overrides live in{' '}
-                <code className="rounded bg-zinc-200 px-1 font-mono text-xs dark:bg-zinc-800">localStorage</code> on this
-                machine — leave a field blank to use the default again.
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    clearUiCopyOverrides()
-                    setUiCopyOverrides({})
-                    setAppMessage('All UI copy reset to built-in defaults.')
-                  }}
-                  className="ecs-interactive rounded-lg border-2 border-rose-400 px-3 py-2 text-xs font-bold uppercase text-rose-800 hover:bg-rose-50 dark:border-rose-500 dark:text-rose-200 dark:hover:bg-rose-500/15"
-                >
-                  Reset all copy
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    void navigator.clipboard.writeText(JSON.stringify(uiCopyOverrides, null, 2))
-                    setAppMessage('Exported overrides JSON to clipboard.')
-                  }}
-                  className="ecs-interactive rounded-lg border-2 border-zinc-400 px-3 py-2 text-xs font-bold uppercase text-zinc-800 hover:bg-zinc-100 dark:border-zinc-500 dark:text-zinc-200 dark:hover:bg-zinc-800"
-                >
-                  Copy JSON
-                </button>
-              </div>
-              <ul className="space-y-4">
-                {(Object.keys(UI_COPY_DEFAULTS) as UiCopyKey[]).map((key) => (
-                  <li key={key} className="rounded-xl border-2 border-zinc-200 bg-white p-3 dark:border-zinc-700 dark:bg-zinc-900">
-                    <label className="block">
-                      <span className="font-mono text-[11px] font-semibold text-amber-800 dark:text-amber-300">{key}</span>
-                      <span className="mt-0.5 block text-[10px] text-zinc-500 dark:text-zinc-400">
-                        Default: {UI_COPY_DEFAULTS[key]}
-                      </span>
-                      <textarea
-                        value={uiCopyOverrides[key] ?? ''}
-                        onChange={(event) => {
-                          const v = event.target.value
-                          setUiCopyOverrides((prev) => {
-                            const next = { ...prev }
-                            if (v.trim() === '') delete next[key]
-                            else next[key] = v
-                            return next
-                          })
-                        }}
-                        placeholder={UI_COPY_DEFAULTS[key]}
-                        rows={Math.min(6, 2 + Math.ceil(UI_COPY_DEFAULTS[key].length / 72))}
-                        className="mt-2 w-full rounded-lg border-2 border-zinc-300 bg-zinc-50 px-3 py-2 text-sm leading-snug text-zinc-900 dark:border-zinc-600 dark:bg-zinc-950 dark:text-zinc-50"
-                      />
+            <div className="mx-auto flex max-w-3xl flex-col gap-4">
+              <header className="space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-sm font-black uppercase tracking-[0.18em] text-zinc-700 dark:text-zinc-200">
+                      UI copy
+                    </h3>
+                    <p className="mt-1 text-xs leading-relaxed text-zinc-600 dark:text-zinc-400">
+                      Edit any label in the signed-in shell. Changes save to{' '}
+                      <code className="rounded bg-zinc-200 px-1 font-mono text-[11px] dark:bg-zinc-800">localStorage</code>{' '}
+                      on this machine and apply everywhere instantly. Empty a field to restore the default.
+                    </p>
+                  </div>
+                  <span
+                    className={cn(
+                      'shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide',
+                      overriddenCopyCount > 0
+                        ? 'border-amber-500 bg-amber-100 text-amber-900 dark:border-amber-400 dark:bg-amber-500/20 dark:text-amber-100'
+                        : 'border-zinc-300 bg-zinc-100 text-zinc-600 dark:border-zinc-600 dark:bg-zinc-800 dark:text-zinc-400'
+                    )}
+                  >
+                    {overriddenCopyCount > 0
+                      ? `${overriddenCopyCount} of ${UI_COPY_KEYS.length} overridden`
+                      : `${UI_COPY_KEYS.length} default`}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="relative min-w-[12rem] flex-1">
+                    <span className="sr-only">Filter UI copy keys</span>
+                    <span aria-hidden className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400">
+                      🔍
+                    </span>
+                    <input
+                      value={copyFilter}
+                      onChange={(event) => setCopyFilter(event.target.value)}
+                      placeholder="Filter by key, label, or text…"
+                      className="w-full rounded-lg border-2 border-zinc-300 bg-white py-1.5 pl-7 pr-2 text-xs dark:border-zinc-600 dark:bg-zinc-900"
+                    />
+                  </label>
+                  <label className="flex shrink-0 items-center gap-1.5 text-[11px] font-semibold text-zinc-600 dark:text-zinc-300">
+                    <input
+                      type="checkbox"
+                      checked={copyShowOverriddenOnly}
+                      onChange={(event) => setCopyShowOverriddenOnly(event.target.checked)}
+                      className="h-3.5 w-3.5 accent-amber-600"
+                    />
+                    Overridden only
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={overriddenCopyCount === 0}
+                    onClick={() => {
+                      if (overriddenCopyCount === 0) return
+                      if (
+                        !window.confirm(
+                          `Reset all ${overriddenCopyCount} overridden ${overriddenCopyCount === 1 ? 'string' : 'strings'} to defaults?`
+                        )
+                      )
+                        return
+                      clearUiCopyOverrides()
+                      setUiCopyOverrides({})
+                      setAppMessage('All UI copy reset to built-in defaults.')
+                    }}
+                    className="ecs-interactive rounded-lg border-2 border-rose-400 px-3 py-1.5 text-[11px] font-bold uppercase text-rose-800 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-rose-500 dark:text-rose-200 dark:hover:bg-rose-500/15"
+                  >
+                    Reset all
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(JSON.stringify(uiCopyOverrides, null, 2))
+                      setAppMessage('Exported overrides JSON to clipboard.')
+                    }}
+                    className="ecs-interactive rounded-lg border-2 border-zinc-400 px-3 py-1.5 text-[11px] font-bold uppercase text-zinc-800 hover:bg-zinc-100 dark:border-zinc-500 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  >
+                    Copy JSON
+                  </button>
+                  <button
+                    type="button"
+                    aria-expanded={showCopyImport}
+                    onClick={() => setShowCopyImport((v) => !v)}
+                    className="ecs-interactive rounded-lg border-2 border-zinc-400 px-3 py-1.5 text-[11px] font-bold uppercase text-zinc-800 hover:bg-zinc-100 dark:border-zinc-500 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                  >
+                    {showCopyImport ? 'Hide import' : 'Import JSON'}
+                  </button>
+                </div>
+                {showCopyImport ? (
+                  <div className="rounded-lg border-2 border-zinc-300 bg-zinc-50 p-2 dark:border-zinc-600 dark:bg-zinc-900/60">
+                    <label className="block text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500 dark:text-zinc-400">
+                      Paste JSON object
                     </label>
-                  </li>
-                ))}
-              </ul>
+                    <textarea
+                      value={copyImportText}
+                      onChange={(event) => {
+                        setCopyImportText(event.target.value)
+                        if (copyImportError) setCopyImportError(null)
+                      }}
+                      rows={4}
+                      placeholder='{"app.productTitle": "My title"}'
+                      className="mt-1 w-full rounded-md border border-zinc-300 bg-white px-2 py-1 font-mono text-xs dark:border-zinc-600 dark:bg-zinc-950"
+                    />
+                    {copyImportError ? (
+                      <p className="mt-1 text-[11px] font-semibold text-rose-600 dark:text-rose-300">{copyImportError}</p>
+                    ) : null}
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          let parsed: unknown
+                          try {
+                            parsed = JSON.parse(copyImportText)
+                          } catch (err) {
+                            setCopyImportError(`Invalid JSON: ${(err as Error).message}`)
+                            return
+                          }
+                          const result = mergeUiCopyOverrides(uiCopyOverrides, parsed)
+                          setUiCopyOverrides(result.next)
+                          setCopyImportText('')
+                          setCopyImportError(null)
+                          setShowCopyImport(false)
+                          setAppMessage(
+                            `Imported ${result.applied} ${result.applied === 1 ? 'value' : 'values'}` +
+                              (result.skipped > 0 ? ` (skipped ${result.skipped} unknown).` : '.')
+                          )
+                        }}
+                        disabled={copyImportText.trim().length === 0}
+                        className="rounded-md border-2 border-zinc-500 bg-zinc-900 px-2.5 py-1 text-[10px] font-bold uppercase text-white hover:bg-zinc-800 disabled:cursor-not-allowed disabled:opacity-40 dark:border-zinc-400 dark:bg-zinc-100 dark:text-zinc-900"
+                      >
+                        Apply
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setCopyImportText('')
+                          setCopyImportError(null)
+                          setShowCopyImport(false)
+                        }}
+                        className="rounded-md border-2 border-zinc-300 bg-transparent px-2.5 py-1 text-[10px] font-bold uppercase text-zinc-700 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+              </header>
+
+              {(() => {
+                const filterText = copyFilter.trim().toLowerCase()
+                const matches = (key: UiCopyKey): boolean => {
+                  const isOverridden = typeof uiCopyOverrides[key] === 'string' && uiCopyOverrides[key]!.trim().length > 0
+                  if (copyShowOverriddenOnly && !isOverridden) return false
+                  if (!filterText) return true
+                  const meta = UI_COPY_META[key]
+                  const haystack = `${key} ${meta.label} ${meta.description} ${UI_COPY_DEFAULTS[key]} ${uiCopyOverrides[key] ?? ''}`.toLowerCase()
+                  return haystack.includes(filterText)
+                }
+                const groupsWithItems = UI_COPY_GROUPS.map((group) => ({
+                  group,
+                  keys: UI_COPY_KEYS.filter((key) => UI_COPY_META[key].group === group.id && matches(key))
+                })).filter((g) => g.keys.length > 0)
+                if (groupsWithItems.length === 0) {
+                  return (
+                    <p className="rounded-lg border-2 border-dashed border-zinc-300 px-3 py-6 text-center text-xs text-zinc-500 dark:border-zinc-600 dark:text-zinc-400">
+                      No strings match this filter.
+                    </p>
+                  )
+                }
+                return (
+                  <div className="space-y-5">
+                    {groupsWithItems.map(({ group, keys }) => (
+                      <section key={group.id} className="space-y-2">
+                        <div className="border-b border-zinc-300 pb-1 dark:border-zinc-700">
+                          <h4 className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-600 dark:text-zinc-300">
+                            {group.title}{' '}
+                            <span className="ml-1 font-mono text-[10px] font-medium normal-case tracking-normal text-zinc-400">
+                              ({keys.length})
+                            </span>
+                          </h4>
+                          <p className="mt-0.5 text-[10px] leading-snug text-zinc-500 dark:text-zinc-500">
+                            {group.blurb}
+                          </p>
+                        </div>
+                        <ul className="space-y-3">
+                          {keys.map((key) => {
+                            const meta = UI_COPY_META[key]
+                            const overrideValue = uiCopyOverrides[key]
+                            const isOverridden = typeof overrideValue === 'string' && overrideValue.trim().length > 0
+                            const value = isOverridden ? overrideValue! : ''
+                            const useTextarea = isMultilineKey(key)
+                            const inputClass =
+                              'w-full rounded-md border-2 bg-white px-2.5 py-1.5 text-sm leading-snug text-zinc-900 dark:bg-zinc-950 dark:text-zinc-50 ' +
+                              (isOverridden
+                                ? 'border-amber-500 dark:border-amber-400'
+                                : 'border-zinc-300 dark:border-zinc-600')
+                            return (
+                              <li
+                                key={key}
+                                className={cn(
+                                  'rounded-xl border-2 p-3 transition-colors',
+                                  isOverridden
+                                    ? 'border-amber-300 bg-amber-50/60 dark:border-amber-500/40 dark:bg-amber-500/10'
+                                    : 'border-zinc-200 bg-white dark:border-zinc-700 dark:bg-zinc-900'
+                                )}
+                              >
+                                <label className="block">
+                                  <div className="flex flex-wrap items-baseline justify-between gap-2">
+                                    <div className="min-w-0">
+                                      <span className="text-[12px] font-bold text-zinc-800 dark:text-zinc-100">
+                                        {meta.label}
+                                      </span>
+                                      <span className="ml-2 font-mono text-[10px] text-zinc-400">{key}</span>
+                                    </div>
+                                    {isOverridden ? (
+                                      <button
+                                        type="button"
+                                        onClick={() =>
+                                          setUiCopyOverrides((prev) => {
+                                            const next = { ...prev }
+                                            delete next[key]
+                                            return next
+                                          })
+                                        }
+                                        className="shrink-0 rounded-md border border-amber-500 bg-white px-2 py-0.5 text-[10px] font-bold uppercase text-amber-800 hover:bg-amber-100 dark:border-amber-400 dark:bg-zinc-900 dark:text-amber-200 dark:hover:bg-amber-500/20"
+                                      >
+                                        Reset
+                                      </button>
+                                    ) : null}
+                                  </div>
+                                  <p className="mt-1 text-[11px] leading-snug text-zinc-500 dark:text-zinc-400">
+                                    {meta.description}
+                                  </p>
+                                  {useTextarea ? (
+                                    <textarea
+                                      value={value}
+                                      onChange={(event) => {
+                                        const v = event.target.value
+                                        setUiCopyOverrides((prev) => {
+                                          const next = { ...prev }
+                                          if (v.trim() === '') delete next[key]
+                                          else next[key] = v
+                                          return next
+                                        })
+                                      }}
+                                      placeholder={UI_COPY_DEFAULTS[key]}
+                                      rows={Math.min(5, 2 + Math.ceil(UI_COPY_DEFAULTS[key].length / 80))}
+                                      className={cn('mt-2', inputClass)}
+                                    />
+                                  ) : (
+                                    <input
+                                      type="text"
+                                      value={value}
+                                      onChange={(event) => {
+                                        const v = event.target.value
+                                        setUiCopyOverrides((prev) => {
+                                          const next = { ...prev }
+                                          if (v.trim() === '') delete next[key]
+                                          else next[key] = v
+                                          return next
+                                        })
+                                      }}
+                                      placeholder={UI_COPY_DEFAULTS[key]}
+                                      className={cn('mt-2', inputClass)}
+                                    />
+                                  )}
+                                  <div className="mt-1 flex flex-wrap items-center justify-between gap-2 text-[10px] text-zinc-400">
+                                    <span className="truncate">
+                                      Default:{' '}
+                                      <span className="text-zinc-500 dark:text-zinc-500">
+                                        {UI_COPY_DEFAULTS[key]}
+                                      </span>
+                                    </span>
+                                    {isOverridden ? (
+                                      <span className="shrink-0 font-mono">
+                                        {value.length} / default {UI_COPY_DEFAULTS[key].length}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                </label>
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      </section>
+                    ))}
+                  </div>
+                )
+              })()}
             </div>
           ) : null}
         </div>
@@ -1492,16 +2166,44 @@ export default function App(): JSX.Element {
     const g = typeof window !== 'undefined' ? readStoredAppearance(GUEST_APPEARANCE_KEY) : null
     return typeof g?.uiSoundsEnabled === 'boolean' ? g.uiSoundsEnabled : false
   })
+  const [startupSplashDurationMs, setStartupSplashDurationMs] = useState<number>(() => {
+    if (typeof window === 'undefined') return 3000
+    try {
+      return parseStartupSplashDuration(window.localStorage.getItem(STARTUP_SPLASH_DURATION_KEY))
+    } catch {
+      return 3000
+    }
+  })
   const [systemDark, setSystemDark] = useState(false)
   const [isAuthed, setIsAuthed] = useState(false)
   const [authMode, setAuthMode] = useState<AuthMode>('login')
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
+  const [rememberLogin, setRememberLogin] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      return window.localStorage.getItem(REMEMBER_LOGIN_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const [prefsHydrated, setPrefsHydrated] = useState(false)
   const [authDisplayName, setAuthDisplayName] = useState('')
   const [devPassword, setDevPassword] = useState('')
-  const [devModeUnlocked, setDevModeUnlocked] = useState(false)
+  const [activeAccountEmail, setActiveAccountEmail] = useState<string | null>(null)
   const [showDevPanel, setShowDevPanel] = useState(false)
-  const [devPanelTab, setDevPanelTab] = useState<DevPanelTab>('workbench')
+  const [devLabFlags, setDevLabFlags] = useState<DevLabFlags>(() => loadDevLabFlags())
+  const [showDevCommandPalette, setShowDevCommandPalette] = useState(false)
+  const [devCommandQuery, setDevCommandQuery] = useState('')
+  const [appVersion, setAppVersion] = useState<string | null>(null)
+  const [availableUpdate, setAvailableUpdate] = useState<{ version: string; url: string } | null>(null)
+  const devUnlockTapCountRef = useRef(0)
+  const [devPanelTab, setDevPanelTab] = useState<DevPanelTab>(() => {
+    if (typeof window === 'undefined') return 'workbench'
+    const stored = window.localStorage.getItem('ecs_dev_panel_tab')
+    const valid: DevPanelTab[] = ['workbench', 'overview', 'state', 'storage', 'theme', 'data', 'strings']
+    return (valid as string[]).includes(stored ?? '') ? (stored as DevPanelTab) : 'workbench'
+  })
   const [uiCopyOverrides, setUiCopyOverrides] = useState<UiCopyOverrides>(() =>
     typeof window !== 'undefined' ? loadUiCopyOverrides() : {}
   )
@@ -1514,6 +2216,16 @@ export default function App(): JSX.Element {
   const [beeThemeUnlocked, setBeeThemeUnlocked] = useState(() => readBeeThemeUnlocked())
   const [secretCodeInput, setSecretCodeInput] = useState('')
   const [secretCodeHint, setSecretCodeHint] = useState<string | null>(null)
+  const authBootstrapDoneRef = useRef(false)
+
+  const applyColorSchemeSelection = useCallback(
+    (next: ColorScheme): void => {
+      setColorScheme(next)
+      const autoMode = AUTO_THEME_MODE_BY_SCHEME[next]
+      if (autoMode) setThemeMode(autoMode)
+    },
+    []
+  )
 
   const [activeAccountId, setActiveAccountId] = useState<string | null>(null)
   const [campaigns, setCampaigns] = useState<CampaignRecord[]>([])
@@ -1559,7 +2271,14 @@ export default function App(): JSX.Element {
   const [battleDrafts, setBattleDrafts] = useState<Record<string, BattleDraft>>({})
   const [battleParticipants, setBattleParticipants] = useState<string[]>([])
   const [dragCharacterId, setDragCharacterId] = useState<string | null>(null)
-  const [showFirstDragHint, setShowFirstDragHint] = useState(false)
+  const [showFirstDragHint, setShowFirstDragHint] = useState(() => {
+    if (typeof window === 'undefined') return true
+    try {
+      return window.localStorage.getItem(DRAG_HINT_DISMISSED_KEY) !== '1'
+    } catch {
+      return true
+    }
+  })
   const [encounterRound, setEncounterRound] = useState(1)
   const [activeTurnIndex, setActiveTurnIndex] = useState(0)
   const [syncBanner, setSyncBanner] = useState<string | null>(null)
@@ -1567,13 +2286,261 @@ export default function App(): JSX.Element {
   const [activityFeed, setActivityFeed] = useState<ActivityFeedEntry[]>([])
   const isApplyingRemoteBattleState = useRef(false)
   const appearanceAccountHydrated = useRef<string | null>(null)
+  const isDevAccount = activeAccountEmail?.toLowerCase() === DEV_ACCOUNT_EMAIL
+  const openThemeMenu = useCallback(() => {
+    setShowSettingsMenu(false)
+    setUiPresets(loadUiPresets())
+    setShowThemeMenu(true)
+  }, [])
+  const applyProfessionalUiPreset = useCallback((preset: ProfessionalUiPreset) => {
+    const s = preset.settings
+    setColorScheme(s.colorScheme)
+    setThemeMode(s.themeMode)
+    setUseThemeLayout(s.useThemeLayout)
+    setCornerStyle(s.cornerStyle)
+    setChromeWeight(s.chromeWeight)
+    setWorkspaceDensity(s.workspaceDensity)
+    setSidebarPlacement(s.sidebarPlacement)
+    setSidebarWidth(s.sidebarWidth)
+    setActiveUiPresetId(null)
+    setRegionFlowCustom(false)
+    setWorkspaceFlow(themedWorkspaceFlowDefault(s.colorScheme, s.useThemeLayout))
+    setAppMessage(`Applied ${preset.title} UI preset.`)
+  }, [])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    persistUiCopyOverrides(uiCopyOverrides)
+    const handle = window.setTimeout(() => persistUiCopyOverrides(uiCopyOverrides), 200)
+    return () => window.clearTimeout(handle)
   }, [uiCopyOverrides])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    function onStorage(event: StorageEvent): void {
+      if (event.key !== UI_COPY_STORAGE_KEY) return
+      setUiCopyOverrides(loadUiCopyOverrides())
+    }
+    window.addEventListener('storage', onStorage)
+    return () => window.removeEventListener('storage', onStorage)
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem('ecs_dev_panel_tab', devPanelTab)
+    } catch {
+      // ignore quota / private mode
+    }
+  }, [devPanelTab])
+
+  useEffect(() => {
+    if (!prefsHydrated) return
+    if (typeof window === 'undefined') return
+    try {
+      if (rememberLogin) window.localStorage.setItem(REMEMBER_LOGIN_KEY, '1')
+      else window.localStorage.removeItem(REMEMBER_LOGIN_KEY)
+    } catch {
+      // ignore localStorage write issues
+    }
+    void backend.appApi.setPrefs({ [PREF_REMEMBER_LOGIN]: rememberLogin ? '1' : '0' }).catch(() => {
+      // ignore IPC persistence failures; localStorage fallback still applies
+    })
+  }, [rememberLogin, prefsHydrated])
+
+  useEffect(() => {
+    let cancelled = false
+    void backend.appApi
+      .getPrefs([PREF_REMEMBER_LOGIN, PREF_GUEST_APPEARANCE])
+      .then((prefs) => {
+        if (cancelled) return
+        const rememberPref = prefs[PREF_REMEMBER_LOGIN]
+        if (rememberPref === '1' || rememberPref === '0') {
+          setRememberLogin(rememberPref === '1')
+        }
+        const appearanceRaw = prefs[PREF_GUEST_APPEARANCE]
+        if (typeof appearanceRaw !== 'string') return
+        let guest: StoredAppearanceV1 | null = null
+        try {
+          const parsed = JSON.parse(appearanceRaw) as unknown
+          if (parsed && typeof parsed === 'object') guest = parsed as StoredAppearanceV1
+        } catch {
+          guest = null
+        }
+        if (!guest) return
+        if (guest.colorScheme) setColorScheme(parseColorScheme(guest.colorScheme))
+        const tm = parseThemeMode(guest.themeMode)
+        if (tm) setThemeMode(tm)
+        if (typeof guest.useThemeLayout === 'boolean') setUseThemeLayout(guest.useThemeLayout)
+        setCornerStyle(parseCornerStyle(guest.cornerStyle, guest.useSoftCorners))
+        setChromeWeight(parseChromeWeight(guest.chromeWeight))
+        setSidebarPlacement(parseSidebarPlacement(guest.sidebarPlacement))
+        setSidebarWidth(parseSidebarWidth(guest.sidebarWidth))
+        const cs = parseColorScheme(guest.colorScheme)
+        const tl = typeof guest.useThemeLayout === 'boolean' ? guest.useThemeLayout : true
+        const flowCustom = guest.regionFlowCustom === true
+        setRegionFlowCustom(flowCustom)
+        setWorkspaceFlow(flowCustom ? normalizeWorkspaceFlow(guest.workspaceFlow) : themedWorkspaceFlowDefault(cs, tl))
+        setActiveUiPresetId(typeof guest.activeUiPresetId === 'string' ? guest.activeUiPresetId : null)
+        if (typeof guest.mergeGeneratedAttacks === 'boolean') setMergeGeneratedAttacks(guest.mergeGeneratedAttacks)
+        if (typeof guest.persistThemePerAccount === 'boolean') setPersistThemePerAccount(guest.persistThemePerAccount)
+        if (typeof guest.uiSoundsEnabled === 'boolean') setUiSoundsEnabled(guest.uiSoundsEnabled)
+      })
+      .catch(() => {
+        // keep localStorage/browser fallback only
+      })
+      .finally(() => {
+        if (!cancelled) setPrefsHydrated(true)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(STARTUP_SPLASH_DURATION_KEY, String(startupSplashDurationMs))
+    } catch {
+      // ignore localStorage write issues
+    }
+  }, [startupSplashDurationMs])
+
+  useEffect(() => {
+    if (!prefsHydrated) return
+    if (authBootstrapDoneRef.current) return
+    authBootstrapDoneRef.current = true
+    let cancelled = false
+    void (async () => {
+      try {
+        if (!rememberLogin) {
+          await backend.authApi.logout()
+          return
+        }
+        const activeId = await backend.accountApi.getActive()
+        if (!activeId || cancelled) return
+        const accounts = await backend.accountApi.list()
+        if (cancelled) return
+        const account = accounts.find((row) => row.id === activeId)
+        if (!account) return
+        setIsAuthed(true)
+        setActiveAccountId(account.id)
+        setActiveAccountEmail(account.email)
+        setAuthEmail(account.email)
+        setWorkspaceTab('home')
+        setAuthMessage(null)
+      } catch {
+        // if bootstrap fails, keep the normal login screen
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [rememberLogin, prefsHydrated])
+
+  useEffect(() => {
+    if (!showDevPanel) return
+    function onKey(event: KeyboardEvent): void {
+      if (event.key !== 'Escape') return
+      const target = event.target as HTMLElement | null
+      if (target) {
+        const tag = target.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) return
+      }
+      setShowDevPanel(false)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showDevPanel])
+
+  useEffect(() => {
+    if (!appMessage) return
+    const handle = window.setTimeout(() => setAppMessage(null), 4000)
+    return () => window.clearTimeout(handle)
+  }, [appMessage])
+
   const t = useCallback((key: UiCopyKey) => resolveUiCopy(uiCopyOverrides, key), [uiCopyOverrides])
+
+  const handleBuildStampTap = useCallback(() => {
+    if (showAdvancedAuthTools) return
+    devUnlockTapCountRef.current += 1
+    if (devUnlockTapCountRef.current < 7) return
+    devUnlockTapCountRef.current = 0
+    setShowAdvancedAuthTools(true)
+    setAuthMode('dev')
+    setAuthMessage('Access mode enabled.')
+  }, [showAdvancedAuthTools])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    void backend.appApi
+      .getVersion()
+      .then((v) => setAppVersion(v))
+      .catch(() => setAppVersion(null))
+  }, [])
+
+  useEffect(() => {
+    if (!appVersion) return
+    const currentVersion = normalizeVersionTag(appVersion)
+    const repo = ((feedRaw as UpdateFeedConfig).githubRepo ?? '').trim()
+    if (!repo || !currentVersion) return
+    let cancelled = false
+    const checkForUpdates = async (): Promise<void> => {
+      try {
+        const response = await fetch(`https://api.github.com/repos/${repo}/releases/latest?t=${Date.now()}`, {
+          cache: 'no-store'
+        })
+        if (!response.ok || cancelled) return
+        const payload = (await response.json()) as { tag_name?: unknown; name?: unknown; html_url?: unknown }
+        if (cancelled) return
+        const latestVersion = normalizeVersionTag(payload.tag_name ?? payload.name)
+        if (!latestVersion) return
+        if (compareVersionTag(latestVersion, currentVersion) <= 0) {
+          setAvailableUpdate(null)
+          return
+        }
+        let dismissedVersion: string | null = null
+        try {
+          dismissedVersion = window.localStorage.getItem(UPDATE_PROMPT_DISMISSED_KEY)
+        } catch {
+          dismissedVersion = null
+        }
+        if (dismissedVersion === latestVersion) {
+          setAvailableUpdate(null)
+          return
+        }
+        const releaseUrl =
+          typeof payload.html_url === 'string' && payload.html_url.trim()
+            ? payload.html_url
+            : `https://github.com/${repo}/releases/latest`
+        setAvailableUpdate({ version: latestVersion, url: releaseUrl })
+      } catch {
+        // ignore connectivity failures; keep current UI
+      }
+    }
+    void checkForUpdates()
+    const intervalId = window.setInterval(() => void checkForUpdates(), UPDATE_CHECK_MS)
+    const onVisibility = (): void => {
+      if (document.visibilityState === 'visible') void checkForUpdates()
+    }
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [appVersion])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(DEV_LAB_FLAGS_KEY, JSON.stringify(devLabFlags))
+    } catch {
+      // ignore quota / private mode
+    }
+    const root = document.documentElement
+    root.dataset.ecsDebugBounds = devLabFlags.showUiBounds ? '1' : '0'
+    root.dataset.ecsForceReducedMotion = devLabFlags.forceReducedMotion ? '1' : '0'
+  }, [devLabFlags])
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)')
@@ -1615,9 +2582,11 @@ export default function App(): JSX.Element {
     [beeThemeUnlocked]
   )
 
+  /* eslint-disable react-hooks/set-state-in-effect -- guard against stale locked secret theme in persisted state */
   useEffect(() => {
     if (colorScheme === 'bee' && !readBeeThemeUnlocked()) setColorScheme('default')
   }, [colorScheme, beeThemeUnlocked])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', darkMode)
@@ -1652,6 +2621,7 @@ export default function App(): JSX.Element {
     sidebarWidth
   ])
 
+  /* eslint-disable react-hooks/set-state-in-effect -- hydrated appearance profile intentionally fans out into UI state setters */
   useLayoutEffect(() => {
     appearanceAccountHydrated.current = null
     if (!isAuthed || !activeAccountId || !persistThemePerAccount) return
@@ -1676,9 +2646,10 @@ export default function App(): JSX.Element {
     }
     appearanceAccountHydrated.current = activeAccountId
   }, [isAuthed, activeAccountId, persistThemePerAccount])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
-  useEffect(() => {
-    const payload: StoredAppearanceV1 = {
+  const appearancePayload = useMemo<StoredAppearanceV1>(
+    () => ({
       colorScheme,
       themeMode,
       useThemeLayout,
@@ -1693,52 +2664,74 @@ export default function App(): JSX.Element {
       mergeGeneratedAttacks,
       persistThemePerAccount,
       uiSoundsEnabled
-    }
-    try {
-      window.localStorage.setItem(GUEST_APPEARANCE_KEY, JSON.stringify(payload))
-      if (isAuthed && activeAccountId && persistThemePerAccount) {
-        if (appearanceAccountHydrated.current === activeAccountId) {
-          window.localStorage.setItem(accountAppearanceKey(activeAccountId), JSON.stringify(payload))
-        }
-      }
-    } catch {
-      // ignore quota / private mode
-    }
-  }, [
-    colorScheme,
-    themeMode,
-    useThemeLayout,
-    cornerStyle,
-    chromeWeight,
-    sidebarPlacement,
-    sidebarWidth,
-    workspaceDensity,
-    workspaceFlow,
-    regionFlowCustom,
-    activeUiPresetId,
-    mergeGeneratedAttacks,
-    persistThemePerAccount,
-    uiSoundsEnabled,
-    isAuthed,
-    activeAccountId
-  ])
+    }),
+    [
+      colorScheme,
+      themeMode,
+      useThemeLayout,
+      cornerStyle,
+      chromeWeight,
+      sidebarPlacement,
+      sidebarWidth,
+      workspaceDensity,
+      workspaceFlow,
+      regionFlowCustom,
+      activeUiPresetId,
+      mergeGeneratedAttacks,
+      persistThemePerAccount,
+      uiSoundsEnabled
+    ]
+  )
 
+  const persistAppearance = useCallback(
+    (payload: StoredAppearanceV1): void => {
+      if (typeof window === 'undefined') return
+      const serialized = JSON.stringify(payload)
+      try {
+        window.localStorage.setItem(GUEST_APPEARANCE_KEY, serialized)
+        if (isAuthed && activeAccountId && persistThemePerAccount) {
+          window.localStorage.setItem(accountAppearanceKey(activeAccountId), serialized)
+        }
+      } catch {
+        // ignore quota / private mode
+      }
+      void backend.appApi.setPrefs({ [PREF_GUEST_APPEARANCE]: serialized }).catch(() => {
+        // ignore IPC persistence failures; localStorage fallback still applies
+      })
+    },
+    [isAuthed, activeAccountId, persistThemePerAccount]
+  )
+
+  useEffect(() => {
+    if (!prefsHydrated) return
+    persistAppearance(appearancePayload)
+  }, [appearancePayload, persistAppearance, prefsHydrated])
+
+  useEffect(() => {
+    if (!prefsHydrated) return
+    const persistNow = (): void => persistAppearance(appearancePayload)
+    const onVisibility = (): void => {
+      if (document.visibilityState === 'hidden') persistNow()
+    }
+    window.addEventListener('beforeunload', persistNow)
+    window.addEventListener('pagehide', persistNow)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('beforeunload', persistNow)
+      window.removeEventListener('pagehide', persistNow)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [appearancePayload, persistAppearance, prefsHydrated])
+
+  /* eslint-disable react-hooks/set-state-in-effect -- themed flow is derived from palette/layout unless user locked custom order */
   useEffect(() => {
     if (regionFlowCustom) return
     setWorkspaceFlow(themedWorkspaceFlowDefault(colorScheme, useThemeLayout))
   }, [colorScheme, useThemeLayout, regionFlowCustom])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     // Keep initialization hook for future auth provider bootstrap.
-  }, [])
-
-  useEffect(() => {
-    try {
-      const dismissed = window.localStorage.getItem(DRAG_HINT_DISMISSED_KEY)
-      setShowFirstDragHint(dismissed !== '1')
-    } catch {
-      setShowFirstDragHint(true)
-    }
   }, [])
 
   useEffect(() => {
@@ -1760,6 +2753,20 @@ export default function App(): JSX.Element {
   }, [isAuthed, activeAccountId, selectedCampaignId])
 
   useEffect(() => {
+    if (!isAuthed || !activeAccountId) return
+    let cancelled = false
+    void backend.accountApi.list().then((rows) => {
+      if (cancelled) return
+      const account = rows.find((row) => row.id === activeAccountId) ?? null
+      setActiveAccountEmail(account?.email ?? null)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [isAuthed, activeAccountId])
+
+  /* eslint-disable react-hooks/set-state-in-effect -- keep battle drafts aligned to currently loaded character roster */
+  useEffect(() => {
     setBattleDrafts((prev) => {
       const next: Record<string, BattleDraft> = {}
       for (const row of characters) {
@@ -1775,11 +2782,15 @@ export default function App(): JSX.Element {
       return next
     })
   }, [characters])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
+  /* eslint-disable react-hooks/set-state-in-effect -- remove participants that no longer exist in roster */
   useEffect(() => {
     setBattleParticipants((prev) => prev.filter((id) => characters.some((row) => row.id === id)))
   }, [characters])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
+  /* eslint-disable react-hooks/set-state-in-effect -- clamp active turn index when participant list shrinks */
   useEffect(() => {
     if (battleParticipants.length === 0) {
       setActiveTurnIndex(0)
@@ -1789,6 +2800,7 @@ export default function App(): JSX.Element {
       setActiveTurnIndex(0)
     }
   }, [battleParticipants, activeTurnIndex])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (!isAuthed || !selectedCampaignId) return
@@ -1837,6 +2849,49 @@ export default function App(): JSX.Element {
   }, [isAuthed, activeAccountId, selectedCampaignId])
 
   useEffect(() => {
+    if (isAuthed) return
+    const onDevShortcut = (event: KeyboardEvent): void => {
+      const usesCmd = event.metaKey && event.shiftKey && event.key.toLowerCase() === 'd'
+      const usesCtrl = event.ctrlKey && event.shiftKey && event.key.toLowerCase() === 'd'
+      if (!usesCmd && !usesCtrl) return
+      event.preventDefault()
+      setShowAdvancedAuthTools((prev) => {
+        const next = !prev
+        if (!next) setAuthMode('login')
+        return next
+      })
+      setAuthMessage(null)
+    }
+    window.addEventListener('keydown', onDevShortcut)
+    return () => window.removeEventListener('keydown', onDevShortcut)
+  }, [isAuthed])
+
+  useEffect(() => {
+    if (!isAuthed || !isDevAccount || !devLabFlags.enableCommandPalette) return
+    const onKey = (event: KeyboardEvent): void => {
+      const target = event.target as HTMLElement | null
+      const inTextField =
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT' ||
+          target.isContentEditable)
+      if (event.key === 'Escape' && showDevCommandPalette) {
+        event.preventDefault()
+        setShowDevCommandPalette(false)
+        return
+      }
+      const isOpenShortcut = (event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k'
+      if (!isOpenShortcut || inTextField) return
+      event.preventDefault()
+      setDevCommandQuery('')
+      setShowDevCommandPalette(true)
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [isAuthed, isDevAccount, devLabFlags.enableCommandPalette, showDevCommandPalette])
+
+  useEffect(() => {
     if (!isAuthed) return
     let timeoutId: ReturnType<typeof setTimeout> | null = null
     const resetTimer = (): void => {
@@ -1867,10 +2922,6 @@ export default function App(): JSX.Element {
   }, [showSettingsMenu, showThemeMenu])
 
   useEffect(() => {
-    if (showThemeMenu) setUiPresets(loadUiPresets())
-  }, [showThemeMenu])
-
-  useEffect(() => {
     if (!layoutEditMode) return
     const onKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape') setLayoutEditMode(false)
@@ -1880,11 +2931,28 @@ export default function App(): JSX.Element {
   }, [layoutEditMode])
 
   useEffect(() => {
+    if (!showQuickCreate) return
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      const target = event.target as HTMLElement | null
+      if (target) {
+        const tag = target.tagName
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || target.isContentEditable) return
+      }
+      setShowQuickCreate(false)
+      resetQuickWizard()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [showQuickCreate, resetQuickWizard])
+
+  useEffect(() => {
     if (!layoutA11yMessage) return
     const id = window.setTimeout(() => setLayoutA11yMessage(''), 4500)
     return () => window.clearTimeout(id)
   }, [layoutA11yMessage])
 
+  /* eslint-disable react-hooks/set-state-in-effect -- reset transient layout editor drag state when mode exits */
   useEffect(() => {
     if (!layoutEditMode) {
       layoutFlowAnnouncedRef.current = ''
@@ -1904,6 +2972,7 @@ export default function App(): JSX.Element {
       setLayoutA11yMessage(`Vertical stack order is now: ${human}.`)
     }
   }, [workspaceFlow, layoutEditMode])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     if (!layoutEditMode) return
@@ -1920,10 +2989,7 @@ export default function App(): JSX.Element {
   }, [layoutEditMode])
 
   useLayoutEffect(() => {
-    if (!showThemeMenu) {
-      setThemeMenuPos(null)
-      return
-    }
+    if (!showThemeMenu) return
     const panelWidth = 352
     const gap = 8
     const measure = (): void => {
@@ -1966,10 +3032,7 @@ export default function App(): JSX.Element {
   }, [showThemeMenu])
 
   useLayoutEffect(() => {
-    if (!showSettingsMenu) {
-      setSettingsPanelPos(null)
-      return
-    }
+    if (!showSettingsMenu) return
     const panelWidth = 288
     const gap = 8
     const approxPanelHeight = 340
@@ -2054,13 +3117,20 @@ export default function App(): JSX.Element {
   async function handleLogout(message?: string): Promise<void> {
     await backend.authApi.logout()
     setIsAuthed(false)
+    setAuthPassword('')
+    setNewResetPassword('')
+    setResetToken('')
+    setDevPassword('')
     setActiveAccountId(null)
+    setActiveAccountEmail(null)
     setSelectedCampaignId(null)
     setSelectedId(null)
     setEditor(emptyCharacter())
     setKeywordText('')
     setAppMessage(null)
     setActivityFeed([])
+    setShowDevPanel(false)
+    setShowDevCommandPalette(false)
     if (message) setAuthMessage(message)
   }
 
@@ -2070,9 +3140,13 @@ export default function App(): JSX.Element {
       const result = await backend.authApi.devLogin(devPassword)
       setAuthMessage(result.message)
       if (!result.ok || !result.account) return
+      setDevPassword('')
+      setAuthPassword('')
+      setNewResetPassword('')
+      setResetToken('')
       setIsAuthed(true)
-      setDevModeUnlocked(true)
       setActiveAccountId(result.account.id)
+      setActiveAccountEmail(result.account.email)
       setWorkspaceTab('home')
       return
     }
@@ -2081,8 +3155,13 @@ export default function App(): JSX.Element {
       const result = await backend.authApi.login({ email: authEmail, password: authPassword })
       setAuthMessage(result.message)
       if (!result.ok || !result.account) return
+      setAuthPassword('')
+      setNewResetPassword('')
+      setResetToken('')
+      setDevPassword('')
       setIsAuthed(true)
       setActiveAccountId(result.account.id)
+      setActiveAccountEmail(result.account.email)
       setWorkspaceTab('home')
       return
     }
@@ -2095,8 +3174,13 @@ export default function App(): JSX.Element {
       })
       setAuthMessage(result.message)
       if (!result.ok || !result.account) return
+      setAuthPassword('')
+      setNewResetPassword('')
+      setResetToken('')
+      setDevPassword('')
       setIsAuthed(true)
       setActiveAccountId(result.account.id)
+      setActiveAccountEmail(result.account.email)
       setWorkspaceTab('home')
       return
     }
@@ -2107,6 +3191,10 @@ export default function App(): JSX.Element {
       newPassword: newResetPassword
     })
     setAuthMessage(result.message)
+    if (result.ok) {
+      setNewResetPassword('')
+      setResetToken('')
+    }
     if (result.ok) {
       setAuthMode('login')
       setResetToken('')
@@ -3141,83 +4229,14 @@ export default function App(): JSX.Element {
     return cn(base, 'gap-5 lg:grid-cols-[1.1fr_0.9fr]')
   }, [colorScheme])
 
-  const loginHeroCopy = useMemo(() => {
-    if (colorScheme === 'violet') {
-      return {
-        badge: 'Aero meadow',
-        title: 'Sign in',
-        body: 'Same look as the rest of the app once you are past this screen.'
-      }
-    }
-    if (colorScheme === 'teal') {
-      return {
-        badge: 'Classic desktop',
-        title: 'Sign in',
-        body: 'Gray window, navy title bar, chunky borders. Nothing fancy.'
-      }
-    }
-    if (colorScheme === 'sunset') {
-      return {
-        badge: 'Neon skin',
-        title: 'Sign in',
-        body: 'Bright gradients on the left, plain form on the right.'
-      }
-    }
-    if (colorScheme === 'wii') {
-      return {
-        badge: 'Wii menu',
-        title: 'Sign in',
-        body: 'Soft silver background, rounded panels.'
-      }
-    }
-    if (colorScheme === 'ps3') {
-      return {
-        badge: 'PS3 (XMB)',
-        title: 'Sign in',
-        body: 'Black field, vertical column guides, drifting silver-blue wave like the XMB.'
-      }
-    }
-    if (colorScheme === 'xbox360') {
-      return {
-        badge: 'Xbox 360 (NXE)',
-        title: 'Sign in',
-        body: 'Charcoal blades, Xbox green glow, horizontal sweep — same wide hero layout as PS3.'
-      }
-    }
-    if (colorScheme === 'cube') {
-      return {
-        badge: 'GameCube',
-        title: 'Sign in',
-        body: 'Indigo BIOS glass, silver grid, warm orange accents — like the startup cube era, not the console purple plastic.'
-      }
-    }
-    if (colorScheme === 'bee') {
-      return {
-        badge: 'Honey bee',
-        title: 'Sign in',
-        body: 'Honeycomb field and amber chrome — a secret palette unlocked from Settings.'
-      }
-    }
-    if (colorScheme === 'wiiu') {
-      return {
-        badge: 'Wii U',
-        title: 'Sign in',
-        body: 'Light tiles, lots of cyan.'
-      }
-    }
-    if (colorScheme === '3ds') {
-      return {
-        badge: '3DS',
-        title: 'Sign in',
-        body: 'Tighter layout, red accents.'
-      }
-    }
-    return {
-      badge: 'Epic Character Storage',
+  const loginHeroCopy = useMemo(
+    () => ({
+      badge: t('app.productTitle'),
       title: 'Sign in',
-      body: 'Characters and campaigns live here after you sign in. Sessions do not persist; you will sign in again next launch.'
-    }
-  }, [colorScheme])
+      body: ''
+    }),
+    [t]
+  )
 
   const workspaceHomeHero = useMemo(() => {
     const email = authEmail.trim()
@@ -3302,20 +4321,6 @@ export default function App(): JSX.Element {
     return darkMode
       ? 'border border-teal-700/50 bg-slate-900/70 text-cyan-50 placeholder:text-cyan-200/50 focus:border-cyan-400 focus:outline-none focus:ring-2 focus:ring-cyan-400/25'
       : 'border border-cyan-200/80 bg-white/92 text-cyan-950 placeholder:text-cyan-800/50 focus:border-sky-500 focus:outline-none focus:ring-2 focus:ring-sky-400/25'
-  }, [colorScheme, darkMode])
-
-  const loginSubtleLinkClass = useMemo(() => {
-    if (colorScheme === 'default') return 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-100'
-    if (colorScheme === 'teal') return 'text-[#000080] hover:underline dark:text-[#9ec1ff]'
-    if (colorScheme === 'sunset') return darkMode ? 'text-fuchsia-200/80 hover:text-fuchsia-100' : 'text-fuchsia-800/90 hover:text-fuchsia-950'
-    if (colorScheme === 'wii') return darkMode ? 'text-sky-200/80 hover:text-white' : 'text-sky-800/90 hover:text-sky-950'
-    if (colorScheme === 'ps3') return 'text-slate-400 hover:text-sky-200'
-    if (colorScheme === 'xbox360') return 'text-zinc-400 hover:text-lime-200'
-    if (colorScheme === 'cube') return darkMode ? 'text-indigo-200/75 hover:text-white' : 'text-indigo-800/85 hover:text-indigo-950'
-    if (colorScheme === 'bee') return darkMode ? 'text-amber-200/80 hover:text-white' : 'text-amber-900/85 hover:text-amber-950'
-    if (colorScheme === 'wiiu') return darkMode ? 'text-cyan-200/75 hover:text-white' : 'text-cyan-800/90 hover:text-cyan-950'
-    if (colorScheme === '3ds') return darkMode ? 'text-rose-200/75 hover:text-white' : 'text-rose-800/90 hover:text-rose-950'
-    return 'text-cyan-800/85 hover:text-cyan-950 dark:text-cyan-200/80 dark:hover:text-white'
   }, [colorScheme, darkMode])
 
   const loginPwdRulesPanelClass = useMemo(() => {
@@ -3573,22 +4578,135 @@ export default function App(): JSX.Element {
   }
 
   const wsTab = workspaceTab
+  const devCommands = useMemo(
+    () => [
+      {
+        id: 'open-workshop',
+        label: 'Open Workshop',
+        run: () => setShowDevPanel(true)
+      },
+      {
+        id: 'open-theme-menu',
+        label: 'Open Theme menu',
+        run: () => openThemeMenu()
+      },
+      {
+        id: 'open-settings-menu',
+        label: 'Open Settings menu',
+        run: () => {
+          setShowThemeMenu(false)
+          setShowSettingsMenu(true)
+        }
+      },
+      {
+        id: 'toggle-layout-editor',
+        label: layoutEditMode ? 'Disable layout editor' : 'Enable layout editor',
+        run: () => setLayoutEditMode((v) => !v)
+      },
+      {
+        id: 'go-home',
+        label: 'Switch to Home tab',
+        run: () => setWorkspaceTab('home')
+      },
+      {
+        id: 'go-sheet',
+        label: 'Switch to Sheet tab',
+        run: () => setWorkspaceTab('sheet')
+      },
+      {
+        id: 'go-battle',
+        label: 'Switch to Battle tab',
+        run: () => setWorkspaceTab('battle')
+      },
+      {
+        id: 'toggle-ui-bounds',
+        label: devLabFlags.showUiBounds ? 'Disable UI bounds overlay' : 'Enable UI bounds overlay',
+        run: () => setDevLabFlags((prev) => ({ ...prev, showUiBounds: !prev.showUiBounds }))
+      },
+      {
+        id: 'toggle-verbose-feed',
+        label: devLabFlags.verboseActivityFeed ? 'Disable verbose activity feed' : 'Enable verbose activity feed',
+        run: () => setDevLabFlags((prev) => ({ ...prev, verboseActivityFeed: !prev.verboseActivityFeed }))
+      }
+    ],
+    [
+      openThemeMenu,
+      layoutEditMode,
+      setLayoutEditMode,
+      setWorkspaceTab,
+      devLabFlags.showUiBounds,
+      devLabFlags.verboseActivityFeed
+    ]
+  )
+  const filteredDevCommands = useMemo(() => {
+    const q = devCommandQuery.trim().toLowerCase()
+    if (!q) return devCommands
+    return devCommands.filter((cmd) => cmd.label.toLowerCase().includes(q) || cmd.id.includes(q))
+  }, [devCommands, devCommandQuery])
+
+  const runDevCommand = useCallback(
+    (commandId: string): void => {
+      const cmd = devCommands.find((row) => row.id === commandId)
+      if (!cmd) return
+      cmd.run()
+      setShowDevCommandPalette(false)
+      setAppMessage(`Ran command: ${cmd.label}`)
+    },
+    [devCommands]
+  )
+  const updatePrompt = availableUpdate ? (
+    <div className="pointer-events-auto fixed left-1/2 top-3 z-[130] flex w-[min(94vw,38rem)] -translate-x-1/2 items-start gap-3 rounded-xl border-2 border-emerald-300 bg-white/95 px-3 py-2.5 text-sm text-zinc-900 shadow-xl backdrop-blur-sm motion-safe:animate-ecs-pop-in dark:border-emerald-500/45 dark:bg-zinc-950/95 dark:text-zinc-50">
+      <span aria-hidden className="mt-0.5 shrink-0 text-base leading-none text-emerald-600 dark:text-emerald-300">
+        ↑
+      </span>
+      <div className="min-w-0 flex-1 leading-snug">
+        Update available: <strong>v{availableUpdate.version}</strong>
+        {appVersion ? ` (you are on v${appVersion}).` : '.'} Download to install the latest Tactile release.
+      </div>
+      <button
+        type="button"
+        onClick={() => window.open(availableUpdate.url, '_blank', 'noopener,noreferrer')}
+        className="ecs-interactive shrink-0 rounded-md border border-emerald-400/75 bg-emerald-500 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-600 dark:border-emerald-500/45 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+      >
+        Download
+      </button>
+      <button
+        type="button"
+        aria-label="Dismiss update prompt"
+        onClick={() => {
+          try {
+            window.localStorage.setItem(UPDATE_PROMPT_DISMISSED_KEY, availableUpdate.version)
+          } catch {
+            // ignore storage write issues
+          }
+          setAvailableUpdate(null)
+        }}
+        className="ecs-interactive shrink-0 rounded-md border border-zinc-300 px-1.5 py-0.5 text-[11px] font-semibold text-zinc-600 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800/60"
+      >
+        ×
+      </button>
+    </div>
+  ) : null
 
   if (!isAuthed) {
-    const authField = cn('w-full px-3 py-2', ecsWideControlRound(colorScheme), loginAuthFieldClass)
+    const authField = cn('ecs-ui-input w-full px-3 py-2', ecsWideControlRound(colorScheme), loginAuthFieldClass)
     return (
       <div
-        className={cn('ecs-theme-shell ecs-aero-login-shell relative min-h-screen overflow-x-clip leading-relaxed', shellText)}
+        className={cn(
+          'ecs-theme-shell ecs-signature-shell ecs-aero-login-shell relative min-h-screen overflow-x-clip leading-relaxed',
+          shellText
+        )}
         data-ecs-login="1"
       >
         <EcsPaletteBackdrop />
+        {updatePrompt}
         <div className="relative z-[1] px-4 py-6">
           <div className={cn('mx-auto w-full', loginShellMaxClass)}>
             {colorScheme === 'teal' ? (
               <div className={loginOuterChrome}>
                 <div className="flex select-none items-center justify-between border-b border-black/40 bg-gradient-to-r from-[#000080] to-[#1084d0] px-2 py-1 dark:border-black/55">
                   <span className="truncate pl-0.5 text-left text-[11px] font-bold tracking-wide text-white">
-                    Epic Character Storage
+                    {t('app.productTitle')}
                   </span>
                   <span className="inline-flex gap-0.5 pr-0.5" aria-hidden>
                     <span className="inline-block h-2.5 w-2.5 rounded-[1px] bg-[#c0c0c0]/95 shadow-[inset_-1px_-1px_0_#555]" />
@@ -3600,7 +4718,7 @@ export default function App(): JSX.Element {
                   <div className="flex min-h-0 flex-col gap-4 lg:min-h-[min(100%,calc(100vh-5.5rem))]">
                     <section
                       className={cn(
-                        'relative flex shrink-0 flex-col overflow-hidden bg-gradient-to-br p-7 shadow-aero-float',
+                        'ecs-login-hero-panel relative flex shrink-0 flex-col overflow-hidden bg-gradient-to-br p-7 shadow-aero-float',
                         'rounded-md border border-black/50 shadow-[4px_4px_0_rgba(0,0,0,0.14)] dark:border-black/55 dark:shadow-[4px_4px_0_rgba(0,0,0,0.35)]',
                         scheme.grad
                       )}
@@ -3614,21 +4732,26 @@ export default function App(): JSX.Element {
                         aria-hidden
                       />
                       <div className="relative shrink-0">
-                        <div className={cn('text-xs font-semibold uppercase tracking-[0.25em]', loginHeroTypography.badge)}>
-                          {loginHeroCopy.badge}
+                        <div className="flex items-center gap-3">
+                          <EcsLogoMark className="h-10 w-10" />
+                          <div className={cn('text-xs font-semibold uppercase tracking-[0.25em]', loginHeroTypography.badge)}>
+                            {loginHeroCopy.badge}
+                          </div>
                         </div>
                         <h1 className={cn('mt-4 text-4xl font-bold leading-tight', loginHeroTypography.title)}>
                           {loginHeroCopy.title}
                         </h1>
-                        <p className={cn('mt-3 max-w-xl text-sm leading-relaxed', loginHeroTypography.body)}>
-                          {loginHeroCopy.body}
-                        </p>
+                        {loginHeroCopy.body ? (
+                          <p className={cn('mt-3 max-w-xl text-sm leading-relaxed', loginHeroTypography.body)}>
+                            {loginHeroCopy.body}
+                          </p>
+                        ) : null}
                       </div>
                     </section>
                     <LoginUpdateLog className="relative min-h-0 flex-1" colorScheme={colorScheme} />
                   </div>
 
-                  <section className={cn(loginSignPanel, loginSignColumnClass)}>
+                  <section className={cn('ecs-login-auth-panel ecs-ui-surface', loginSignPanel, loginSignColumnClass)}>
                     <h2 className={cn('text-2xl font-bold tracking-tight', loginSignHeadingClass)}>
                       {authMode === 'login' ? 'Sign in' : null}
                       {authMode === 'register' ? 'Create your account' : null}
@@ -3636,10 +4759,10 @@ export default function App(): JSX.Element {
                       {authMode === 'dev' ? 'Developer access' : null}
                     </h2>
                     <p className={cn('mt-1 text-sm leading-relaxed', loginIntroMuted)}>
-                      {authMode === 'login' ? 'Use your account email and password.' : null}
+                      {authMode === 'login' ? 'Use your username or email and password.' : null}
                       {authMode === 'register' ? 'Pick a display name and a strong password to get started.' : null}
                       {authMode === 'reset' ? 'Request a one-time token, then set a new password.' : null}
-                      {authMode === 'dev' ? 'Local-only password for quick development access.' : null}
+                      {authMode === 'dev' ? 'Restricted access mode.' : null}
                     </p>
 
                     <div role="tablist" aria-label="Authentication mode" className="mt-4 flex flex-wrap gap-2">
@@ -3651,7 +4774,7 @@ export default function App(): JSX.Element {
                           aria-selected={authMode === mode}
                           onClick={() => setAuthMode(mode)}
                           className={cn(
-                            'ecs-interactive px-3 py-1.5 text-xs font-semibold uppercase motion-safe:active:scale-[0.98]',
+                            'ecs-interactive ecs-ui-btn ecs-ui-btn-quiet px-3 py-1.5 text-xs font-semibold uppercase motion-safe:active:scale-[0.98]',
                             ecsAuthControlRound(colorScheme),
                             authMode === mode ? scheme.primary : loginMutedBtn
                           )}
@@ -3664,7 +4787,7 @@ export default function App(): JSX.Element {
                         onClick={() => setAuthMode('reset')}
                         aria-pressed={authMode === 'reset'}
                         className={cn(
-                          'ecs-interactive ml-auto px-3 py-1.5 text-xs font-semibold motion-safe:active:scale-[0.98]',
+                          'ecs-interactive ecs-ui-btn ecs-ui-btn-quiet ml-auto px-3 py-1.5 text-xs font-semibold motion-safe:active:scale-[0.98]',
                           ecsAuthControlRound(colorScheme),
                           authMode === 'reset' ? scheme.primary : loginMutedBtn
                         )}
@@ -3673,20 +4796,13 @@ export default function App(): JSX.Element {
                       </button>
                     </div>
                     <div className="mt-1 flex flex-wrap items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => setShowAdvancedAuthTools((prev) => !prev)}
-                        className={cn('text-[11px] font-semibold uppercase tracking-wide', loginSubtleLinkClass)}
-                      >
-                        {showAdvancedAuthTools ? '− Hide developer options' : '+ Developer options'}
-                      </button>
                       {showAdvancedAuthTools ? (
                         <button
                           type="button"
                           onClick={() => setAuthMode('dev')}
                           aria-pressed={authMode === 'dev'}
                           className={cn(
-                            'ecs-interactive px-2 py-1 text-[11px] font-semibold uppercase',
+                            'ecs-interactive ecs-ui-btn ecs-ui-btn-quiet px-2 py-1 text-[11px] font-semibold uppercase',
                             ecsAuthControlRound(colorScheme),
                             authMode === 'dev' ? scheme.primary : loginMutedBtn
                           )}
@@ -3720,7 +4836,7 @@ export default function App(): JSX.Element {
                         <input
                           value={authEmail}
                           onChange={(event) => setAuthEmail(event.target.value)}
-                          placeholder="Email"
+                          placeholder={authMode === 'login' ? 'Email or username' : 'Email'}
                           className={authField}
                         />
                         <input
@@ -3763,6 +4879,15 @@ export default function App(): JSX.Element {
                             ))}
                           </ul>
                         ) : null}
+                        <label className="inline-flex items-center gap-2 px-1 text-xs text-slate-600 dark:text-slate-300">
+                          <input
+                            type="checkbox"
+                            checked={rememberLogin}
+                            onChange={(event) => setRememberLogin(event.target.checked)}
+                            className="h-3.5 w-3.5 rounded border border-slate-300 accent-sky-500 dark:border-slate-600"
+                          />
+                          Remember me on this device
+                        </label>
                         {showAdvancedAuthTools ? (
                           <>
                             <button type="button" onClick={() => void handleSendTestEmail()} className={loginSmtpOutlineClass}>
@@ -3774,12 +4899,12 @@ export default function App(): JSX.Element {
                           </>
                         ) : null}
                         {smtpMessage ? (
-                          <p className="rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                          <p className="ecs-ui-subtle-panel rounded-lg px-3 py-2 text-xs text-slate-700 dark:text-slate-200">
                             {smtpMessage}
                           </p>
                         ) : null}
                         {resetTokenHint ? (
-                          <p className="rounded-lg bg-amber-100 px-3 py-2 text-xs text-amber-900 dark:bg-amber-500/15 dark:text-amber-100">
+                          <p className="ecs-ui-subtle-panel rounded-lg border-amber-300/80 bg-amber-100/75 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/35 dark:bg-amber-500/15 dark:text-amber-100">
                             {resetTokenHint}
                           </p>
                         ) : null}
@@ -3790,7 +4915,7 @@ export default function App(): JSX.Element {
                       type="button"
                       onClick={() => void handleAuthSubmit()}
                       className={cn(
-                        'mt-4 w-full px-4 py-2 text-sm font-semibold transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99]',
+                        'ecs-ui-btn-primary mt-4 w-full px-4 py-2 text-sm font-semibold transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99]',
                         ecsWideControlRound(colorScheme),
                         scheme.primary
                       )}
@@ -3801,6 +4926,16 @@ export default function App(): JSX.Element {
                       {authMode === 'dev' ? 'Unlock dev mode' : null}
                     </button>
                     {authMessage ? <p className={cn('mt-3 text-sm', loginAuthMessageClass)}>{authMessage}</p> : null}
+                    <div className="mt-3 text-center">
+                      <button
+                        type="button"
+                        onClick={handleBuildStampTap}
+                        className="select-none rounded px-2 py-0.5 text-[10px] font-medium tracking-wide text-slate-400/70 hover:text-slate-500 dark:text-slate-500/70 dark:hover:text-slate-400"
+                        aria-label="App build stamp"
+                      >
+                        {appVersion ? `v${appVersion}` : ' '}
+                      </button>
+                    </div>
                   </section>
                 </div>
               </div>
@@ -3809,7 +4944,7 @@ export default function App(): JSX.Element {
                 <div className="flex min-h-0 flex-col gap-4 lg:min-h-[min(100%,calc(100vh-3rem))]">
                   <section
                     className={cn(
-                      'relative flex shrink-0 flex-col overflow-hidden bg-gradient-to-br p-7 shadow-aero-float',
+                      'ecs-login-hero-panel relative flex shrink-0 flex-col overflow-hidden bg-gradient-to-br p-7 shadow-aero-float',
                       colorScheme === 'violet' &&
                         (useShapeSoft
                           ? 'ecs-diagonal-strip rounded-[1.75rem]'
@@ -3920,21 +5055,26 @@ export default function App(): JSX.Element {
                       <div className="ecs-3ds-hinge pointer-events-none" aria-hidden />
                     ) : null}
                     <div className="relative shrink-0">
-                      <div className={cn('text-xs font-semibold uppercase tracking-[0.25em]', loginHeroTypography.badge)}>
-                        {loginHeroCopy.badge}
+                      <div className="flex items-center gap-3">
+                        <EcsLogoMark className="h-10 w-10" />
+                        <div className={cn('text-xs font-semibold uppercase tracking-[0.25em]', loginHeroTypography.badge)}>
+                          {loginHeroCopy.badge}
+                        </div>
                       </div>
                       <h1 className={cn('mt-4 text-4xl font-bold leading-tight', loginHeroTypography.title)}>
                         {loginHeroCopy.title}
                       </h1>
-                      <p className={cn('mt-3 max-w-xl text-sm leading-relaxed', loginHeroTypography.body)}>
-                        {loginHeroCopy.body}
-                      </p>
+                      {loginHeroCopy.body ? (
+                        <p className={cn('mt-3 max-w-xl text-sm leading-relaxed', loginHeroTypography.body)}>
+                          {loginHeroCopy.body}
+                        </p>
+                      ) : null}
                     </div>
                   </section>
                   <LoginUpdateLog className="relative min-h-0 flex-1" colorScheme={colorScheme} />
                 </div>
 
-                <section className={cn(loginSignPanel, loginSignColumnClass)}>
+                <section className={cn('ecs-login-auth-panel ecs-ui-surface', loginSignPanel, loginSignColumnClass)}>
                   <h2 className={cn('text-2xl font-bold tracking-tight', loginSignHeadingClass)}>
                     {authMode === 'login' ? 'Sign in' : null}
                     {authMode === 'register' ? 'Create your account' : null}
@@ -3942,10 +5082,10 @@ export default function App(): JSX.Element {
                     {authMode === 'dev' ? 'Developer access' : null}
                   </h2>
                   <p className={cn('mt-1 text-sm leading-relaxed', loginIntroMuted)}>
-                    {authMode === 'login' ? 'Use your account email and password.' : null}
+                    {authMode === 'login' ? 'Use your username or email and password.' : null}
                     {authMode === 'register' ? 'Pick a display name and a strong password to get started.' : null}
                     {authMode === 'reset' ? 'Request a one-time token, then set a new password.' : null}
-                    {authMode === 'dev' ? 'Local-only password for quick development access.' : null}
+                    {authMode === 'dev' ? 'Restricted access mode.' : null}
                   </p>
 
                   <div role="tablist" aria-label="Authentication mode" className="mt-4 flex flex-wrap gap-2">
@@ -3957,7 +5097,7 @@ export default function App(): JSX.Element {
                         aria-selected={authMode === mode}
                         onClick={() => setAuthMode(mode)}
                         className={cn(
-                          'ecs-interactive px-3 py-1.5 text-xs font-semibold uppercase motion-safe:active:scale-[0.98]',
+                          'ecs-interactive ecs-ui-btn ecs-ui-btn-quiet px-3 py-1.5 text-xs font-semibold uppercase motion-safe:active:scale-[0.98]',
                           ecsAuthControlRound(colorScheme),
                           authMode === mode ? scheme.primary : loginMutedBtn
                         )}
@@ -3970,7 +5110,7 @@ export default function App(): JSX.Element {
                       onClick={() => setAuthMode('reset')}
                       aria-pressed={authMode === 'reset'}
                       className={cn(
-                        'ecs-interactive ml-auto px-3 py-1.5 text-xs font-semibold motion-safe:active:scale-[0.98]',
+                        'ecs-interactive ecs-ui-btn ecs-ui-btn-quiet ml-auto px-3 py-1.5 text-xs font-semibold motion-safe:active:scale-[0.98]',
                         ecsAuthControlRound(colorScheme),
                         authMode === 'reset' ? scheme.primary : loginMutedBtn
                       )}
@@ -3979,20 +5119,13 @@ export default function App(): JSX.Element {
                     </button>
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setShowAdvancedAuthTools((prev) => !prev)}
-                      className={cn('text-[11px] font-semibold uppercase tracking-wide', loginSubtleLinkClass)}
-                    >
-                      {showAdvancedAuthTools ? '− Hide developer options' : '+ Developer options'}
-                    </button>
                     {showAdvancedAuthTools ? (
                       <button
                         type="button"
                         onClick={() => setAuthMode('dev')}
                         aria-pressed={authMode === 'dev'}
                         className={cn(
-                          'ecs-interactive px-2 py-1 text-[11px] font-semibold uppercase',
+                          'ecs-interactive ecs-ui-btn ecs-ui-btn-quiet px-2 py-1 text-[11px] font-semibold uppercase',
                           ecsAuthControlRound(colorScheme),
                           authMode === 'dev' ? scheme.primary : loginMutedBtn
                         )}
@@ -4026,7 +5159,7 @@ export default function App(): JSX.Element {
                       <input
                         value={authEmail}
                         onChange={(event) => setAuthEmail(event.target.value)}
-                        placeholder="Email"
+                        placeholder={authMode === 'login' ? 'Email or username' : 'Email'}
                         className={authField}
                       />
                       <input
@@ -4065,6 +5198,15 @@ export default function App(): JSX.Element {
                           ))}
                         </ul>
                       ) : null}
+                      <label className="inline-flex items-center gap-2 px-1 text-xs text-slate-600 dark:text-slate-300">
+                        <input
+                          type="checkbox"
+                          checked={rememberLogin}
+                          onChange={(event) => setRememberLogin(event.target.checked)}
+                          className="h-3.5 w-3.5 rounded border border-slate-300 accent-sky-500 dark:border-slate-600"
+                        />
+                        Remember me on this device
+                      </label>
                       {showAdvancedAuthTools ? (
                         <>
                           <button type="button" onClick={() => void handleSendTestEmail()} className={loginSmtpOutlineClass}>
@@ -4076,12 +5218,12 @@ export default function App(): JSX.Element {
                         </>
                       ) : null}
                       {smtpMessage ? (
-                        <p className="rounded-lg bg-slate-100 px-3 py-2 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                        <p className="ecs-ui-subtle-panel rounded-lg px-3 py-2 text-xs text-slate-700 dark:text-slate-200">
                           {smtpMessage}
                         </p>
                       ) : null}
                       {resetTokenHint ? (
-                        <p className="rounded-lg bg-amber-100 px-3 py-2 text-xs text-amber-900 dark:bg-amber-500/15 dark:text-amber-100">
+                        <p className="ecs-ui-subtle-panel rounded-lg border-amber-300/80 bg-amber-100/75 px-3 py-2 text-xs text-amber-900 dark:border-amber-500/35 dark:bg-amber-500/15 dark:text-amber-100">
                           {resetTokenHint}
                         </p>
                       ) : null}
@@ -4092,7 +5234,7 @@ export default function App(): JSX.Element {
                     type="button"
                     onClick={() => void handleAuthSubmit()}
                     className={cn(
-                      'mt-4 w-full px-4 py-2 text-sm font-semibold transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99]',
+                      'ecs-ui-btn-primary mt-4 w-full px-4 py-2 text-sm font-semibold transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99]',
                       ecsWideControlRound(colorScheme),
                       scheme.primary
                     )}
@@ -4103,6 +5245,16 @@ export default function App(): JSX.Element {
                     {authMode === 'dev' ? 'Unlock dev mode' : null}
                   </button>
                   {authMessage ? <p className={cn('mt-3 text-sm', loginAuthMessageClass)}>{authMessage}</p> : null}
+                  <div className="mt-3 text-center">
+                    <button
+                      type="button"
+                      onClick={handleBuildStampTap}
+                      className="select-none rounded px-2 py-0.5 text-[10px] font-medium tracking-wide text-slate-400/70 hover:text-slate-500 dark:text-slate-500/70 dark:hover:text-slate-400"
+                      aria-label="App build stamp"
+                    >
+                      {appVersion ? `v${appVersion}` : ' '}
+                    </button>
+                  </div>
                 </section>
               </div>
             )}
@@ -4113,12 +5265,17 @@ export default function App(): JSX.Element {
   }
 
   return (
-    <div className={cn('ecs-theme-shell relative min-h-screen overflow-x-clip overflow-y-visible leading-relaxed', shellText)}>
+    <div className={cn('ecs-theme-shell ecs-signature-shell relative min-h-screen overflow-x-clip overflow-y-visible leading-relaxed', shellText)}>
+      {updatePrompt}
       {syncBanner ? (
         <div
           role="status"
-          className="pointer-events-auto fixed left-1/2 top-3 z-[120] flex max-w-md -translate-x-1/2 items-start gap-2 rounded-xl border border-sky-200/90 bg-sky-50/95 px-3 py-2 text-sm text-sky-950 shadow-lg backdrop-blur-sm dark:border-sky-500/35 dark:bg-sky-950/90 dark:text-sky-50"
+          className={cn(
+            'pointer-events-auto fixed left-1/2 z-[120] flex max-w-md -translate-x-1/2 items-start gap-2 rounded-xl border border-sky-200/90 bg-sky-50/95 px-3 py-2 text-sm text-sky-950 shadow-lg backdrop-blur-sm motion-safe:animate-ecs-pop-in dark:border-sky-500/35 dark:bg-sky-950/90 dark:text-sky-50',
+            availableUpdate ? 'top-[4.25rem]' : 'top-3'
+          )}
         >
+          <span aria-hidden className="mt-0.5 shrink-0 text-base leading-none">↻</span>
           <span className="min-w-0 flex-1 leading-snug">{syncBanner}</span>
           <button
             type="button"
@@ -4128,10 +5285,87 @@ export default function App(): JSX.Element {
               syncBannerClearRef.current = null
               setSyncBanner(null)
             }}
-            className="shrink-0 rounded-md border border-sky-300/80 px-2 py-0.5 text-xs font-semibold text-sky-900 hover:bg-sky-100/80 dark:border-sky-400/40 dark:text-sky-100 dark:hover:bg-sky-900/60"
+            className="ecs-interactive shrink-0 rounded-md border border-sky-300/80 px-2 py-0.5 text-xs font-semibold text-sky-900 hover:bg-sky-100/80 dark:border-sky-400/40 dark:text-sky-100 dark:hover:bg-sky-900/60"
           >
             ×
           </button>
+        </div>
+      ) : null}
+      {appMessage ? (
+        <div
+          role="status"
+          aria-live="polite"
+          className={cn(
+            'pointer-events-auto fixed right-4 z-[125] flex w-[min(92vw,22rem)] items-start gap-2 rounded-xl border-2 border-amber-300 bg-white/95 px-3 py-2.5 text-sm text-zinc-900 shadow-xl backdrop-blur-sm motion-safe:animate-ecs-pop-in dark:border-amber-500/45 dark:bg-zinc-950/95 dark:text-zinc-50',
+            syncBanner && availableUpdate ? 'top-[8.5rem]' : syncBanner || availableUpdate ? 'top-[4.25rem]' : 'top-3'
+          )}
+        >
+          <span aria-hidden className="mt-0.5 shrink-0 text-base leading-none text-amber-600 dark:text-amber-300">
+            ◆
+          </span>
+          <span className="min-w-0 flex-1 leading-snug">{appMessage}</span>
+          <button
+            type="button"
+            aria-label="Dismiss notification"
+            onClick={() => setAppMessage(null)}
+            className="ecs-interactive shrink-0 rounded-md border border-zinc-300 px-1.5 py-0.5 text-[11px] font-semibold text-zinc-600 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800/60"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+      {showDevCommandPalette && isDevAccount && devLabFlags.enableCommandPalette ? (
+        <div className="fixed inset-0 z-[51000] flex items-start justify-center bg-slate-950/40 p-4 pt-[12vh] backdrop-blur-sm">
+          <button
+            type="button"
+            aria-label="Close command palette"
+            onClick={() => setShowDevCommandPalette(false)}
+            className="absolute inset-0"
+          />
+          <div className="relative z-[1] w-full max-w-xl rounded-xl border border-slate-300 bg-white/95 shadow-2xl dark:border-slate-700 dark:bg-slate-950/95">
+            <div className="border-b border-slate-200 px-3 py-2 text-[10px] font-bold uppercase tracking-[0.15em] text-slate-500 dark:border-slate-700 dark:text-slate-400">
+              Command palette
+            </div>
+            <input
+              autoFocus
+              value={devCommandQuery}
+              onChange={(event) => setDevCommandQuery(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape') {
+                  event.preventDefault()
+                  setShowDevCommandPalette(false)
+                  return
+                }
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  if (filteredDevCommands.length > 0) runDevCommand(filteredDevCommands[0].id)
+                }
+              }}
+              placeholder="Type a command..."
+              className="w-full border-0 bg-transparent px-3 py-2.5 text-sm text-slate-900 outline-none placeholder:text-slate-400 dark:text-slate-100 dark:placeholder:text-slate-500"
+            />
+            <ul className="max-h-72 overflow-y-auto border-t border-slate-200 px-2 py-2 dark:border-slate-700">
+              {filteredDevCommands.length > 0 ? (
+                filteredDevCommands.map((cmd, idx) => (
+                  <li key={cmd.id}>
+                    <button
+                      type="button"
+                      onClick={() => runDevCommand(cmd.id)}
+                      className={cn(
+                        'flex w-full items-center justify-between rounded-md px-2.5 py-2 text-left text-sm text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800/70',
+                        idx === 0 && 'bg-slate-100 dark:bg-slate-800/60'
+                      )}
+                    >
+                      <span>{cmd.label}</span>
+                      <span className="font-mono text-[10px] text-slate-400">{cmd.id}</span>
+                    </button>
+                  </li>
+                ))
+              ) : (
+                <li className="px-2.5 py-2 text-xs text-slate-500 dark:text-slate-400">No command matches this search.</li>
+              )}
+            </ul>
+          </div>
         </div>
       ) : null}
       <EcsPaletteBackdrop />
@@ -4144,12 +5378,12 @@ export default function App(): JSX.Element {
         )}
       >
         <DevToolsPanel
-          open={showDevPanel}
+          open={showDevPanel && isDevAccount}
           onClose={() => setShowDevPanel(false)}
           activeTab={devPanelTab}
           setActiveTab={setDevPanelTab}
           colorScheme={colorScheme}
-          setColorScheme={setColorScheme}
+          setColorScheme={applyColorSchemeSelection}
           themeMode={themeMode}
           setThemeMode={setThemeMode}
           useThemeLayout={useThemeLayout}
@@ -4202,10 +5436,12 @@ export default function App(): JSX.Element {
           setActiveUiPresetId={setActiveUiPresetId}
           uiCopyOverrides={uiCopyOverrides}
           setUiCopyOverrides={setUiCopyOverrides}
+          devLabFlags={devLabFlags}
+          setDevLabFlags={setDevLabFlags}
         >
         <div className="ecs-workspace-flow">
         <header
-          className={headerChrome}
+          className={cn(headerChrome, 'ecs-signature-header')}
           data-region="header"
           style={{ order: workspaceFlow.indexOf('header') }}
         >
@@ -4262,26 +5498,44 @@ export default function App(): JSX.Element {
           ) : null}
           <div className="relative z-[1] flex flex-wrap items-center justify-between gap-3">
             <div>
-              <h1
-                className={cn(
-                  'ecs-product-wordmark text-3xl font-bold tracking-tight sm:text-4xl',
-                  colorScheme === 'sunset' && 'ecs-y2k-text-glow'
-                )}
-              >
-                {t('app.productTitle')}
-              </h1>
+              <div className="flex items-center gap-3">
+                <EcsLogoMark className="h-9 w-9" />
+                <h1
+                  className={cn(
+                    'ecs-product-wordmark text-3xl font-bold tracking-tight sm:text-4xl',
+                    colorScheme === 'sunset' && 'ecs-y2k-text-glow'
+                  )}
+                >
+                  {t('app.productTitle')}
+                </h1>
+              </div>
               <p className={cn('ecs-product-tagline mt-2 max-w-xl text-sm leading-relaxed', headerSubtitleClass)}>
                 {t('app.productTagline')}
               </p>
+              {isDevAccount ? (
+                <div className="ecs-logo-preview-strip mt-2 flex items-center gap-1.5" title="Logo stress preview at small sizes">
+                  {LOGO_MARK_VARIANTS.map((variant) => (
+                    <EcsLogoMark
+                      key={variant}
+                      variant={variant}
+                      className={cn(
+                        'h-6 w-6 border-current/25 bg-current/5',
+                        variant === ACTIVE_LOGO_MARK && 'ring-1 ring-current/25'
+                      )}
+                    />
+                  ))}
+                  <EcsLogoMark variant={ACTIVE_LOGO_MARK} className="h-4 w-4 border-current/25 bg-current/5" />
+                </div>
+              ) : null}
             </div>
-            <div className="relative flex flex-wrap items-center gap-2">
-              {devModeUnlocked ? (
+            <div className="ecs-signature-toolbar relative flex flex-wrap items-center gap-2">
+              {isDevAccount ? (
                 <button
                   type="button"
                   onClick={() => setShowDevPanel(true)}
                   aria-expanded={showDevPanel}
                   title="Open the Workshop docked beside the workspace (themes, layout, paths, UI copy)"
-                  className="ecs-interactive inline-flex min-h-[2.75rem] items-center gap-2 rounded-xl border-2 border-zinc-500 bg-zinc-900 px-5 py-2.5 text-sm font-black uppercase tracking-wide text-white shadow-lg hover:bg-zinc-800 dark:border-zinc-400 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
+                  className="ecs-interactive ecs-toolbar-btn ecs-ui-btn-secondary inline-flex min-h-[2.75rem] items-center gap-2 rounded-xl border-2 border-zinc-500 bg-zinc-900 px-5 py-2.5 text-sm font-black uppercase tracking-wide text-white shadow-lg hover:bg-zinc-800 dark:border-zinc-400 dark:bg-zinc-100 dark:text-zinc-900 dark:hover:bg-white"
                 >
                   <span aria-hidden className="text-lg leading-none">
                     ◆
@@ -4300,7 +5554,7 @@ export default function App(): JSX.Element {
                   onClick={() => setRulesMode('ttrpg')}
                   title="Lightweight generic character sheet"
                   className={cn(
-                    'ecs-interactive px-2.5 py-1.5 transition-colors',
+                    'ecs-interactive ecs-toolbar-btn ecs-ui-btn px-2.5 py-1.5 transition-colors',
                     rulesMode === 'ttrpg'
                       ? 'bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900'
                       : 'bg-transparent text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/70'
@@ -4314,7 +5568,7 @@ export default function App(): JSX.Element {
                   onClick={() => setRulesMode('dnd')}
                   title="DnD 5e-style abilities, skills, and sheet"
                   className={cn(
-                    'ecs-interactive border-l border-slate-300 px-2.5 py-1.5 transition-colors dark:border-slate-600',
+                    'ecs-interactive ecs-toolbar-btn ecs-ui-btn border-l border-slate-300 px-2.5 py-1.5 transition-colors dark:border-slate-600',
                     rulesMode === 'dnd'
                       ? 'bg-slate-800 text-white dark:bg-slate-100 dark:text-slate-900'
                       : 'bg-transparent text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800/70'
@@ -4337,7 +5591,7 @@ export default function App(): JSX.Element {
                     : 'Reorder title bar, status strip, and main column (bottom panel)'
                 }
                 className={cn(
-                  'ecs-interactive inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold active:brightness-95',
+                  'ecs-interactive ecs-toolbar-btn ecs-ui-btn ecs-ui-btn-quiet inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold active:brightness-95',
                   layoutEditMode
                     ? 'border-amber-500 bg-amber-100 text-amber-950 shadow-sm dark:border-amber-400 dark:bg-amber-500/20 dark:text-amber-50'
                     : 'border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/70'
@@ -4353,13 +5607,16 @@ export default function App(): JSX.Element {
                 ref={themeMenuButtonRef}
                 type="button"
                 onClick={() => {
-                  setShowSettingsMenu(false)
-                  setShowThemeMenu((prev) => !prev)
+                  if (showThemeMenu) {
+                    setShowThemeMenu(false)
+                  } else {
+                    openThemeMenu()
+                  }
                 }}
                 aria-haspopup="dialog"
                 aria-expanded={showThemeMenu}
                 title="Themes, layout, and appearance"
-                className="ecs-interactive inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 active:brightness-95 dark:border-slate-700 dark:hover:bg-slate-800/70"
+                className="ecs-interactive ecs-toolbar-btn ecs-ui-btn ecs-ui-btn-quiet inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 active:brightness-95 dark:border-slate-700 dark:hover:bg-slate-800/70"
               >
                 <span aria-hidden className="text-sm leading-none">
                   ◐
@@ -4376,7 +5633,7 @@ export default function App(): JSX.Element {
                 aria-haspopup="dialog"
                 aria-expanded={showSettingsMenu}
                 title="Open workspace settings"
-                className="ecs-interactive inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 active:brightness-95 dark:border-slate-700 dark:hover:bg-slate-800/70"
+                className="ecs-interactive ecs-toolbar-btn ecs-ui-btn ecs-ui-btn-quiet inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 active:brightness-95 dark:border-slate-700 dark:hover:bg-slate-800/70"
               >
                 <span aria-hidden className="text-sm leading-none">⚙</span>
                 <span>Settings</span>
@@ -4386,7 +5643,7 @@ export default function App(): JSX.Element {
                 type="button"
                 onClick={() => void handleLogout('Logged out.')}
                 title="Sign out of this workspace"
-                className="ecs-interactive inline-flex items-center gap-1.5 rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 active:brightness-95 dark:border-rose-500/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                className="ecs-interactive ecs-toolbar-btn ecs-ui-btn ecs-ui-btn-danger inline-flex items-center gap-1.5 rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 active:brightness-95 dark:border-rose-500/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
               >
                 <span aria-hidden className="text-sm leading-none">⏻</span>
                 <span>Logout</span>
@@ -4412,31 +5669,31 @@ export default function App(): JSX.Element {
           className="ecs-workspace-status flex flex-col gap-2 motion-safe:animate-ecs-fade-up motion-safe:[animation-delay:55ms]"
         >
           <div className="flex flex-wrap gap-2">
-            <div className={statusPill}>
+            <div className={cn(statusPill, 'ecs-status-pill')}>
               Mode: <span className="font-semibold">{rulesMode === 'dnd' ? 'DnD' : 'TTRPG'}</span>
             </div>
-            <div className={statusPill}>
+            <div className={cn(statusPill, 'ecs-status-pill')}>
               Characters: <span className="font-semibold">{characters.length}</span>
             </div>
-            <div className={statusPill}>
+            <div className={cn(statusPill, 'ecs-status-pill')}>
               {t('workspace.campaignLabel')}: <span className="font-semibold">{activeCampaign?.name ?? 'Personal'}</span>
             </div>
           </div>
           <div
             className={cn(
-              'w-full rounded-xl border border-slate-200/80 bg-white/50 px-3 py-2 dark:border-slate-700/80 dark:bg-slate-950/30',
+              'ecs-signature-panel w-full rounded-xl border border-slate-200/80 bg-white/50 px-3 py-2 dark:border-slate-700/80 dark:bg-slate-950/30',
               cardClass
             )}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <span className="ecs-ui-field-label">
                 {t('activity.heading')}
               </span>
               {activityFeed.length > 0 ? (
                 <button
                   type="button"
                   onClick={() => setActivityFeed([])}
-                  className="ecs-interactive rounded-md border border-slate-300 px-2 py-0.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800/60"
+                  className="ecs-interactive ecs-ui-btn ecs-ui-btn-quiet rounded-md border border-slate-300 px-2 py-0.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800/60"
                 >
                   Clear
                 </button>
@@ -4452,26 +5709,52 @@ export default function App(): JSX.Element {
                 aria-label="Recent workspace activity"
                 aria-live="polite"
               >
-                {activityFeed.map((entry) => (
-                  <li key={entry.entryId}>
-                    <span className="whitespace-nowrap font-mono text-[10px] text-slate-400 dark:text-slate-500">
-                      {formatLocalActivityTime(entry.at)}
-                    </span>{' '}
-                    <span className="font-semibold text-slate-800 dark:text-slate-100">
-                      {activeAccountId && entry.actorAccountId === activeAccountId ? 'You' : entry.actorDisplayName}
-                    </span>{' '}
-                    <span className="text-slate-600 dark:text-slate-300">{entry.summary}</span>
-                  </li>
-                ))}
+                {activityFeed.map((entry) => {
+                  const glyph = activityKindGlyph(entry.kind)
+                  return (
+                    <li key={entry.entryId} className="flex items-start gap-1.5">
+                      <span
+                        aria-hidden
+                        title={glyph.label}
+                        className={cn(
+                          'mt-px shrink-0 select-none text-[12px] font-bold leading-none',
+                          glyph.tone
+                        )}
+                      >
+                        {glyph.icon}
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="whitespace-nowrap font-mono text-[10px] text-slate-400 dark:text-slate-500">
+                          {formatLocalActivityTime(entry.at)}
+                        </span>{' '}
+                        <span className="font-semibold text-slate-800 dark:text-slate-100">
+                          {activeAccountId && entry.actorAccountId === activeAccountId ? 'You' : entry.actorDisplayName}
+                        </span>{' '}
+                        {devLabFlags.verboseActivityFeed ? (
+                          <span className="mr-1 rounded border border-slate-300 px-1 py-0 text-[9px] font-mono uppercase text-slate-500 dark:border-slate-600 dark:text-slate-400">
+                            {entry.kind}
+                          </span>
+                        ) : null}
+                        <span className="text-slate-600 dark:text-slate-300">{entry.summary}</span>
+                      </span>
+                    </li>
+                  )
+                })}
               </ul>
             )}
           </div>
         </div>
 
         <div className={workspaceGridClass} data-region="grid" style={{ order: workspaceFlow.indexOf('grid') }}>
-          <aside className={cn(workspaceShellRound, 'min-w-0 p-4 shadow-sm lg:sticky lg:top-5 lg:h-fit', cardClass)}>
+          <aside
+            className={cn(
+              workspaceShellRound,
+              'ecs-sidebar-shell ecs-signature-panel min-w-0 p-4 shadow-sm lg:sticky lg:top-5 lg:h-fit',
+              cardClass
+            )}
+          >
             <div className="flex items-baseline justify-between gap-2">
-              <h2 className="text-sm font-bold uppercase tracking-wide">{t('sidebar.charactersHeading')}</h2>
+              <h2 className="ecs-ui-section-title">{t('sidebar.charactersHeading')}</h2>
               <span className="shrink-0 text-[10px] text-slate-500 dark:text-slate-400">
                 {filteredCharacters.length} of {characters.length}
               </span>
@@ -4492,7 +5775,7 @@ export default function App(): JSX.Element {
                   onChange={(event) => setSearch(event.target.value)}
                   placeholder={t('sidebar.searchPlaceholder')}
                   aria-label="Search characters"
-                  className="w-full rounded-lg border border-slate-300 bg-transparent py-1.5 pl-6 pr-7 text-xs dark:border-slate-700"
+                  className="ecs-ui-input w-full rounded-lg border border-slate-300 bg-transparent py-1.5 pl-6 pr-7 text-xs dark:border-slate-700"
                 />
                 {search ? (
                   <button
@@ -4510,7 +5793,7 @@ export default function App(): JSX.Element {
                   value={factionFilter}
                   onChange={(event) => setFactionFilter(event.target.value)}
                   aria-label="Filter by faction"
-                  className="w-full rounded-lg border border-slate-300 bg-transparent px-2 py-1.5 text-xs dark:border-slate-700"
+                  className="ecs-ui-input w-full rounded-lg border border-slate-300 bg-transparent px-2 py-1.5 text-xs dark:border-slate-700"
                 >
                   <option value="all">All factions</option>
                   {factionOptions.map((faction) => (
@@ -4526,7 +5809,7 @@ export default function App(): JSX.Element {
               onClick={openQuickCreate}
               title="Guided 4-step character creation"
               className={cn(
-                'mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99]',
+                'ecs-primary-cta ecs-ui-btn-primary mt-2 inline-flex w-full items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99]',
                 scheme.primary
               )}
             >
@@ -4534,8 +5817,39 @@ export default function App(): JSX.Element {
               <span>{t('sidebar.newCharacter')}</span>
             </button>
             {filteredCharacters.length === 0 ? (
-              <div className="mt-2 rounded-lg border border-dashed border-slate-300 px-2 py-3 text-center text-[11px] text-slate-500 dark:border-slate-700 dark:text-slate-400">
-                {characters.length === 0 ? t('sidebar.emptyRoster') : t('sidebar.emptyFilter')}
+              <div className="mt-3 flex flex-col items-center gap-2 rounded-xl border-2 border-dashed border-slate-300 px-3 py-5 text-center text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                <span aria-hidden className="text-2xl leading-none opacity-70">
+                  {characters.length === 0 ? '🛡️' : '🔍'}
+                </span>
+                <p className="text-[12px] font-semibold leading-snug text-slate-600 dark:text-slate-300">
+                  {characters.length === 0 ? t('sidebar.emptyRoster') : t('sidebar.emptyFilter')}
+                </p>
+                {characters.length === 0 ? (
+                  <button
+                    type="button"
+                    onClick={openQuickCreate}
+                    className={cn(
+                      'mt-1 inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-semibold text-white transition duration-150 hover:brightness-110 active:brightness-95',
+                      scheme.primary
+                    )}
+                  >
+                    <span aria-hidden>＋</span>
+                    <span>Create your first</span>
+                  </button>
+                ) : (
+                  (search || factionFilter !== 'all') && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSearch('')
+                        setFactionFilter('all')
+                      }}
+                      className="ecs-interactive ecs-ui-btn ecs-ui-btn-quiet mt-1 rounded-md border border-slate-300 px-2 py-0.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-50 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800/60"
+                    >
+                      Clear filters
+                    </button>
+                  )
+                )}
               </div>
             ) : (
               <ul className="ecs-character-list mt-2 space-y-1.5">
@@ -4551,7 +5865,7 @@ export default function App(): JSX.Element {
                         onClick={() => openCharacter(character)}
                         title={isDraggable ? `Click to open • drag to add to battle` : 'Open character'}
                         className={cn(
-                          'flex w-full items-center gap-2 border px-2 py-1.5 text-left motion-safe:transition-[border-color,box-shadow,background-color] motion-safe:duration-200 motion-safe:hover:shadow-md motion-safe:hover:border-slate-300 dark:motion-safe:hover:border-slate-600',
+                          'ecs-character-row flex w-full items-center gap-2 border px-2 py-1.5 text-left motion-safe:transition-[border-color,box-shadow,background-color] motion-safe:duration-200 motion-safe:hover:shadow-md motion-safe:hover:border-slate-300 dark:motion-safe:hover:border-slate-600',
                           ecsCharacterRowRound(colorScheme),
                           isDraggable ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer',
                           selectedId === character.id
@@ -4600,7 +5914,7 @@ export default function App(): JSX.Element {
             )}
 
             <div className="mt-4 border-t border-slate-200 pt-3 dark:border-slate-700">
-              <h3 className="text-[11px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+              <h3 className="ecs-ui-section-title text-slate-500 dark:text-slate-400">
                 {t('sidebar.sharingHeading')}
               </h3>
               {guidedSetup ? (
@@ -4624,7 +5938,7 @@ export default function App(): JSX.Element {
                         void navigator.clipboard.writeText(activeCampaign.code)
                         setAppMessage(`Copied ${activeCampaign.code} to clipboard.`)
                       }}
-                      className="ecs-interactive shrink-0 rounded border border-slate-300 px-1.5 py-0.5 text-[10px] font-semibold hover:bg-white dark:border-slate-600 dark:hover:bg-slate-800/80"
+                      className="ecs-interactive ecs-ui-btn ecs-ui-btn-quiet shrink-0 rounded border border-slate-300 px-1.5 py-0.5 text-[10px] font-semibold hover:bg-white dark:border-slate-600 dark:hover:bg-slate-800/80"
                       title="Copy join code"
                     >
                       Copy
@@ -4653,7 +5967,7 @@ export default function App(): JSX.Element {
                       <button
                         type="button"
                         onClick={() => void handleLeaveCampaign()}
-                        className="mt-2 w-full rounded border border-rose-300 px-2 py-1 text-[10px] font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                        className="ecs-ui-btn ecs-ui-btn-danger mt-2 w-full rounded border border-rose-300 px-2 py-1 text-[10px] font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
                       >
                         Leave campaign
                       </button>
@@ -4703,14 +6017,14 @@ export default function App(): JSX.Element {
                       value={newCampaignName}
                       onChange={(event) => setNewCampaignName(event.target.value)}
                       placeholder="Campaign name…"
-                      className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-700"
+                      className="ecs-ui-input w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-700"
                     />
                     <button
                       type="button"
                       onClick={() => void createCampaign()}
                       disabled={!newCampaignName.trim()}
                       className={cn(
-                        'mt-1.5 w-full rounded px-2 py-1 text-[10px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40',
+                        'ecs-ui-btn-primary mt-1.5 w-full rounded px-2 py-1 text-[10px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40',
                         scheme.primary
                       )}
                     >
@@ -4727,14 +6041,14 @@ export default function App(): JSX.Element {
                       value={joinCode}
                       onChange={(event) => setJoinCode(event.target.value)}
                       placeholder="Share code"
-                      className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs font-mono dark:border-slate-700"
+                      className="ecs-ui-input w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs font-mono dark:border-slate-700"
                     />
                     <button
                       type="button"
                       onClick={() => void joinCampaign()}
                       disabled={!joinCode.trim()}
                       className={cn(
-                        'mt-1.5 w-full rounded px-2 py-1 text-[10px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40',
+                        'ecs-ui-btn-primary mt-1.5 w-full rounded px-2 py-1 text-[10px] font-semibold text-white disabled:cursor-not-allowed disabled:opacity-40',
                         scheme.secondary
                       )}
                     >
@@ -4747,7 +6061,13 @@ export default function App(): JSX.Element {
           </aside>
 
           <main className="min-h-min min-w-0 space-y-5">
-            <section className={cn(workspaceShellRound, 'p-4 shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/40', cardClass)}>
+            <section
+              className={cn(
+                workspaceShellRound,
+                'ecs-workspace-panel ecs-signature-panel p-4 shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/40',
+                cardClass
+              )}
+            >
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
                 <div role="tablist" aria-label="Workspace view" className="flex flex-wrap gap-2">
                   <button
@@ -4757,7 +6077,7 @@ export default function App(): JSX.Element {
                     aria-controls="workspace-tab-panel"
                     onClick={() => setWorkspaceTab('home')}
                     className={cn(
-                      'rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition duration-150 motion-safe:active:scale-[0.98]',
+                      'ecs-workspace-tab-btn rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition duration-150 motion-safe:active:scale-[0.98]',
                       wsTab === 'home'
                         ? `${scheme.primary} text-white hover:brightness-110 active:brightness-95`
                         : 'ecs-interactive border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50'
@@ -4772,7 +6092,7 @@ export default function App(): JSX.Element {
                     aria-controls="workspace-tab-panel"
                     onClick={() => setWorkspaceTab('sheet')}
                     className={cn(
-                      'rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition duration-150 motion-safe:active:scale-[0.98]',
+                      'ecs-workspace-tab-btn rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition duration-150 motion-safe:active:scale-[0.98]',
                       workspaceTab === 'sheet'
                         ? `${scheme.primary} text-white hover:brightness-110 active:brightness-95`
                         : 'ecs-interactive border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50'
@@ -4788,7 +6108,7 @@ export default function App(): JSX.Element {
                     disabled={!selectedCampaignId}
                     onClick={() => setWorkspaceTab('battle')}
                     className={cn(
-                      'rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition duration-150 motion-safe:active:scale-[0.98]',
+                      'ecs-workspace-tab-btn rounded-lg px-3 py-1.5 text-xs font-semibold uppercase tracking-wide transition duration-150 motion-safe:active:scale-[0.98]',
                       workspaceTab === 'battle'
                         ? `${scheme.secondary} text-white hover:brightness-110 active:brightness-95`
                         : 'ecs-interactive border border-slate-300 hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50',
@@ -4804,11 +6124,11 @@ export default function App(): JSX.Element {
 
                 <div className="flex min-w-[min(100%,11rem)] flex-[1_1_14rem] flex-wrap items-center gap-2">
                   {selectedCampaignId ? (
-                    <span className="shrink-0 rounded-full bg-emerald-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-emerald-700 dark:text-emerald-300">
+                    <span className="ecs-ui-chip shrink-0 bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
                       Shared
                     </span>
                   ) : (
-                    <span className="shrink-0 rounded-full bg-slate-500/15 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-slate-600 dark:text-slate-300">
+                    <span className="ecs-ui-chip shrink-0 bg-slate-500/15 text-slate-600 dark:text-slate-300">
                       Personal
                     </span>
                   )}
@@ -4819,7 +6139,7 @@ export default function App(): JSX.Element {
                     id="header-campaign-select"
                     value={selectedCampaignId ?? ''}
                     onChange={(event) => setSelectedCampaignId(event.target.value || null)}
-                    className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-transparent px-2 py-1.5 text-xs dark:border-slate-700"
+                    className="ecs-ui-input min-w-0 flex-1 rounded-lg border border-slate-300 bg-transparent px-2 py-1.5 text-xs dark:border-slate-700"
                     title="Switch personal workspace or a shared campaign"
                   >
                     <option value="">{t('workspace.personalWorkspace')}</option>
@@ -4837,10 +6157,7 @@ export default function App(): JSX.Element {
 
                 {wsTab !== 'home' ? (
                   <div className="flex shrink-0 items-center gap-2 sm:ml-auto">
-                    <label
-                      htmlFor="tab-density"
-                      className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400"
-                    >
+                    <label htmlFor="tab-density" className="ecs-ui-field-label">
                       {workspaceTab === 'sheet' ? 'Editor' : 'Cards'}
                     </label>
                     <select
@@ -4859,7 +6176,7 @@ export default function App(): JSX.Element {
                         if (workspaceTab === 'sheet') setCompactCreator(compact)
                         else setCompactBattle(compact)
                       }}
-                      className="rounded-md border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-700"
+                      className="ecs-ui-input rounded-md border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-700"
                       title={
                         workspaceTab === 'sheet'
                           ? 'Compact hides large description fields. Full shows everything.'
@@ -4936,7 +6253,7 @@ export default function App(): JSX.Element {
                     <LoginUpdateLog className="relative min-h-0 flex-1" colorScheme={colorScheme} />
                   </div>
 
-                  <section className={cn(loginSignPanel, loginSignColumnClass, 'self-stretch')}>
+                  <section className={cn('ecs-ui-surface ecs-signature-panel', loginSignPanel, loginSignColumnClass, 'self-stretch')}>
                     <h2 className={cn('text-xl font-bold tracking-tight', loginSignHeadingClass)}>Start</h2>
                     <p className={cn('mt-1 text-sm leading-relaxed', loginIntroMuted)}>
                       Open Sheet or Battle from here, or use the tabs under the header.
@@ -4946,7 +6263,7 @@ export default function App(): JSX.Element {
                         type="button"
                         onClick={() => setWorkspaceTab('sheet')}
                         className={cn(
-                          'w-full px-4 py-2.5 text-sm font-semibold transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99]',
+                          'ecs-ui-btn-primary w-full px-4 py-2.5 text-sm font-semibold transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99]',
                           ecsWideControlRound(colorScheme),
                           scheme.primary
                         )}
@@ -4959,7 +6276,7 @@ export default function App(): JSX.Element {
                         onClick={() => setWorkspaceTab('battle')}
                         title={selectedCampaignId ? 'Encounter tracker' : 'Choose a shared campaign in the sidebar first'}
                         className={cn(
-                          'w-full px-4 py-2.5 text-sm font-semibold transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40',
+                          'ecs-ui-btn-primary w-full px-4 py-2.5 text-sm font-semibold transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-40',
                           ecsWideControlRound(colorScheme),
                           scheme.secondary
                         )}
@@ -4973,7 +6290,13 @@ export default function App(): JSX.Element {
             ) : null}
             {(workspaceTab === 'sheet' || workspaceTab === 'battle') && (
               <>
-            <section className={cn(workspaceShellRound, 'p-4 shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/40', cardClass)}>
+            <section
+              className={cn(
+                workspaceShellRound,
+                'ecs-workspace-panel ecs-signature-panel p-4 shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/40',
+                cardClass
+              )}
+            >
               {/* Toolbar: primary actions left, status right. Display toggles live in Settings. */}
               <div className="flex flex-wrap items-center gap-2">
                 {/* Create group */}
@@ -4983,7 +6306,7 @@ export default function App(): JSX.Element {
                     onClick={openQuickCreate}
                     title="Guided 4-step character creation"
                     className={cn(
-                      'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.98]',
+                      'ecs-ui-btn-primary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.98]',
                       scheme.primary
                     )}
                   >
@@ -4994,7 +6317,7 @@ export default function App(): JSX.Element {
                     type="button"
                     onClick={newCharacter}
                     title="Open a blank sheet for advanced editing"
-                    className="ecs-interactive rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 motion-safe:active:scale-[0.98] dark:border-slate-700 dark:hover:bg-slate-800/50"
+                    className="ecs-interactive ecs-ui-btn ecs-ui-btn-quiet rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 motion-safe:active:scale-[0.98] dark:border-slate-700 dark:hover:bg-slate-800/50"
                   >
                     Blank sheet
                   </button>
@@ -5009,7 +6332,7 @@ export default function App(): JSX.Element {
                     onClick={() => void saveCharacter()}
                     title="Save the open character to your library"
                     className={cn(
-                      'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.98]',
+                      'ecs-ui-btn-primary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.98]',
                       scheme.secondary
                     )}
                   >
@@ -5021,7 +6344,7 @@ export default function App(): JSX.Element {
                       type="button"
                       onClick={() => void deleteCharacter()}
                       title="Delete this character (cannot be undone)"
-                      className="ecs-interactive rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                      className="ecs-interactive ecs-ui-btn ecs-ui-btn-danger rounded-lg border border-rose-300 px-3 py-1.5 text-xs font-semibold text-rose-700 hover:bg-rose-50 dark:border-rose-500/40 dark:text-rose-300 dark:hover:bg-rose-500/10"
                     >
                       Delete
                     </button>
@@ -5035,7 +6358,7 @@ export default function App(): JSX.Element {
                   type="button"
                   onClick={() => void generateAttacks()}
                   title="Build attacks from the character's keywords list"
-                  className="ecs-interactive inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
+                  className="ecs-interactive ecs-ui-btn ecs-ui-btn-quiet inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
                 >
                   <span aria-hidden className="text-sm leading-none">⚡</span>
                   <span>Generate attacks</span>
@@ -5045,25 +6368,25 @@ export default function App(): JSX.Element {
                   <>
                     <span aria-hidden className="hidden h-6 w-px bg-slate-300/70 sm:inline-block dark:bg-slate-700/70" />
                     <div className="flex items-center gap-1" aria-label="Apply DnD class preset">
-                      <span className="text-[10px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">Preset</span>
+                      <span className="ecs-ui-field-label text-slate-400 dark:text-slate-500">Preset</span>
                       <button
                         type="button"
                         onClick={() => applyCharacterPreset('frontliner')}
-                        className="ecs-interactive rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
+                        className="ecs-interactive ecs-ui-btn ecs-ui-btn-quiet rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
                       >
                         Frontliner
                       </button>
                       <button
                         type="button"
                         onClick={() => applyCharacterPreset('caster')}
-                        className="ecs-interactive rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
+                        className="ecs-interactive ecs-ui-btn ecs-ui-btn-quiet rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
                       >
                         Caster
                       </button>
                       <button
                         type="button"
                         onClick={() => applyCharacterPreset('rogue')}
-                        className="ecs-interactive rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
+                        className="ecs-interactive ecs-ui-btn ecs-ui-btn-quiet rounded-lg border border-slate-300 px-2.5 py-1 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
                       >
                         Rogue
                       </button>
@@ -5077,13 +6400,13 @@ export default function App(): JSX.Element {
                     <button
                       type="button"
                       onClick={() => setWorkspaceTab((prev) => (prev === 'sheet' ? 'battle' : 'sheet'))}
-                      className="ecs-interactive rounded-lg border border-slate-300 px-3 py-1 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
+                      className="ecs-interactive ecs-ui-btn ecs-ui-btn-quiet rounded-lg border border-slate-300 px-3 py-1 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
                     >
                       {workspaceTab === 'sheet' ? 'Go to battle' : 'Back to sheet'}
                     </button>
                   ) : null}
                   <div
-                    className="rounded-full border border-slate-300/70 px-3 py-1 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400"
+                    className="ecs-ui-chip rounded-full border border-slate-300/70 px-3 py-1 text-xs text-slate-500 dark:border-slate-700 dark:text-slate-400"
                     title={selectedCampaignId ? 'Active shared campaign' : 'Personal — only you see these characters'}
                   >
                     {selectedCampaignId ? `Campaign: ${activeCampaign?.name ?? 'Unknown'}` : 'Personal workspace'}
@@ -5093,7 +6416,13 @@ export default function App(): JSX.Element {
             </section>
 
             {workspaceTab === 'battle' && selectedCampaignId ? (
-              <section className={cn(workspaceShellRound, 'p-5 shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/40', cardClass)}>
+              <section
+                className={cn(
+                  workspaceShellRound,
+                  'ecs-workspace-panel ecs-signature-panel p-5 shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/40',
+                  cardClass
+                )}
+              >
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div>
                     <h2 className="text-lg font-semibold">Encounter board</h2>
@@ -5237,7 +6566,7 @@ export default function App(): JSX.Element {
                             <button
                               type="button"
                               onClick={() => removeParticipant(character.id)}
-                              className="rounded border border-slate-300 px-2 py-1 text-[11px] font-semibold text-slate-600 dark:border-slate-600 dark:text-slate-300"
+                              className="ecs-ui-btn ecs-ui-btn-quiet rounded border border-slate-300 px-2 py-1 text-[11px] font-semibold text-slate-600 dark:border-slate-600 dark:text-slate-300"
                             >
                               Remove
                             </button>
@@ -5246,7 +6575,7 @@ export default function App(): JSX.Element {
                             {/* HP block — primary, with damage/heal stepper */}
                             <div className="rounded-lg border border-slate-200 p-2 dark:border-slate-700">
                               <div className="flex items-center justify-between">
-                                <span className="text-[10px] font-bold uppercase tracking-wide text-rose-600 dark:text-rose-400">
+                                <span className="ecs-ui-field-label text-rose-600 dark:text-rose-400">
                                   HP
                                 </span>
                                 <span className="text-[10px] text-slate-400">
@@ -5256,7 +6585,7 @@ export default function App(): JSX.Element {
                               <div className="mt-1 flex items-center gap-1">
                                 <button
                                   type="button"
-                                  className="rounded border border-slate-300 px-1.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 dark:border-slate-700 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                                  className="ecs-ui-btn ecs-ui-btn-danger rounded border border-slate-300 px-1.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 dark:border-slate-700 dark:text-rose-300 dark:hover:bg-rose-500/10"
                                   onClick={() => updateBattleDraft(character.id, { hpCurrent: draft.hpCurrent - 5 })}
                                   title="Take 5 damage"
                                 >
@@ -5264,7 +6593,7 @@ export default function App(): JSX.Element {
                                 </button>
                                 <button
                                   type="button"
-                                  className="rounded border border-slate-300 px-1.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 dark:border-slate-700 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                                  className="ecs-ui-btn ecs-ui-btn-danger rounded border border-slate-300 px-1.5 py-1 text-[11px] font-semibold text-rose-700 hover:bg-rose-50 dark:border-slate-700 dark:text-rose-300 dark:hover:bg-rose-500/10"
                                   onClick={() => updateBattleDraft(character.id, { hpCurrent: draft.hpCurrent - 1 })}
                                   title="Take 1 damage"
                                 >
@@ -5279,11 +6608,11 @@ export default function App(): JSX.Element {
                                       hpCurrent: Number(event.target.value || 0)
                                     })
                                   }
-                                  className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-center text-sm font-semibold dark:border-slate-700"
+                                  className="ecs-ui-input w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-center text-sm font-semibold dark:border-slate-700"
                                 />
                                 <button
                                   type="button"
-                                  className="rounded border border-slate-300 px-1.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-slate-700 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+                                  className="ecs-ui-btn ecs-ui-btn-quiet rounded border border-slate-300 px-1.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-slate-700 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
                                   onClick={() => updateBattleDraft(character.id, { hpCurrent: draft.hpCurrent + 1 })}
                                   title="Heal 1 HP"
                                 >
@@ -5291,7 +6620,7 @@ export default function App(): JSX.Element {
                                 </button>
                                 <button
                                   type="button"
-                                  className="rounded border border-slate-300 px-1.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-slate-700 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
+                                  className="ecs-ui-btn ecs-ui-btn-quiet rounded border border-slate-300 px-1.5 py-1 text-[11px] font-semibold text-emerald-700 hover:bg-emerald-50 dark:border-slate-700 dark:text-emerald-300 dark:hover:bg-emerald-500/10"
                                   onClick={() => updateBattleDraft(character.id, { hpCurrent: draft.hpCurrent + 5 })}
                                   title="Heal 5 HP"
                                 >
@@ -5301,11 +6630,11 @@ export default function App(): JSX.Element {
                             </div>
                             {/* Defense / Initiative / Faction block */}
                             <div className="rounded-lg border border-slate-200 p-2 dark:border-slate-700">
-                              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                              <span className="ecs-ui-field-label">
                                 Combat stats
                               </span>
                               <div className="mt-1 grid grid-cols-3 gap-2">
-                                <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                <label className="ecs-ui-field-label">
                                   AC
                                   <input
                                     type="number"
@@ -5315,10 +6644,10 @@ export default function App(): JSX.Element {
                                         armorCurrent: Number(event.target.value || 0)
                                       })
                                     }
-                                    className="mt-0.5 w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-center text-sm font-semibold text-slate-900 dark:border-slate-700 dark:text-slate-100"
+                                    className="ecs-ui-input mt-0.5 w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-center text-sm font-semibold text-slate-900 dark:border-slate-700 dark:text-slate-100"
                                   />
                                 </label>
-                                <label className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                <label className="ecs-ui-field-label">
                                   Init
                                   <input
                                     type="number"
@@ -5328,10 +6657,10 @@ export default function App(): JSX.Element {
                                         initiative: Number(event.target.value || 0)
                                       })
                                     }
-                                    className="mt-0.5 w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-center text-sm font-semibold text-slate-900 dark:border-slate-700 dark:text-slate-100"
+                                    className="ecs-ui-input mt-0.5 w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-center text-sm font-semibold text-slate-900 dark:border-slate-700 dark:text-slate-100"
                                   />
                                 </label>
-                                <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                                <div className="ecs-ui-field-label">
                                   Faction
                                   <div
                                     className="mt-0.5 truncate rounded border border-slate-200 px-2 py-1 text-center text-xs font-medium normal-case text-slate-700 dark:border-slate-700 dark:text-slate-200"
@@ -5449,7 +6778,7 @@ export default function App(): JSX.Element {
                   keywordIntelLines={sheetAttackIntel?.lines ?? []}
                 />
               ) : (
-            <section className={cn('rounded-2xl p-4 shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/40', cardClass)}>
+            <section className={cn('ecs-signature-panel rounded-2xl p-4 shadow-sm ring-1 ring-slate-200/50 dark:ring-slate-700/40', cardClass)}>
               <h2 className="text-lg font-semibold">Character Details</h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
                 {guidedSetup
@@ -5583,17 +6912,17 @@ export default function App(): JSX.Element {
                 value={keywordText}
                 onChange={(event) => setKeywordText(event.target.value)}
                 placeholder="Keywords: fire, shadow, arcane"
-                className="mt-2 w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
+                className="ecs-ui-input mt-2 w-full rounded-lg border border-slate-300 bg-transparent px-3 py-2 text-sm dark:border-slate-700"
               />
               <button
                 type="button"
                 onClick={() => void generateAttacks()}
-                className={cn('mt-2 rounded-lg px-3 py-2 text-sm font-semibold text-white', scheme.secondary)}
+                className={cn('ecs-ui-btn-primary mt-2 rounded-lg px-3 py-2 text-sm font-semibold text-white', scheme.secondary)}
               >
                 Generate from keywords
               </button>
               <div className="mt-3 space-y-2 rounded-lg border border-dashed border-slate-300 p-2 dark:border-slate-600">
-                <div className="text-[10px] font-bold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                <div className="ecs-ui-field-label">
                   Add attack manually
                 </div>
                 <div className="grid gap-2 sm:grid-cols-2">
@@ -5601,43 +6930,43 @@ export default function App(): JSX.Element {
                     value={manualAttackDraft.name}
                     onChange={(event) => setManualAttackDraft((d) => ({ ...d, name: event.target.value }))}
                     placeholder="Attack name"
-                    className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
+                    className="ecs-ui-input w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
                   />
                   <input
                     value={manualAttackDraft.hitBonus}
                     onChange={(event) => setManualAttackDraft((d) => ({ ...d, hitBonus: event.target.value }))}
                     placeholder="Hit bonus"
-                    className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
+                    className="ecs-ui-input w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
                   />
                   <input
                     value={manualAttackDraft.damageDice}
                     onChange={(event) => setManualAttackDraft((d) => ({ ...d, damageDice: event.target.value }))}
                     placeholder="e.g. 2d6+4"
-                    className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
+                    className="ecs-ui-input w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
                   />
                   <input
                     value={manualAttackDraft.damageType}
                     onChange={(event) => setManualAttackDraft((d) => ({ ...d, damageType: event.target.value }))}
                     placeholder="Damage type"
-                    className="w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
+                    className="ecs-ui-input w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
                   />
                   <input
                     value={manualAttackDraft.range}
                     onChange={(event) => setManualAttackDraft((d) => ({ ...d, range: event.target.value }))}
                     placeholder="Range"
-                    className="sm:col-span-2 w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
+                    className="ecs-ui-input sm:col-span-2 w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
                   />
                   <input
                     value={manualAttackDraft.description}
                     onChange={(event) => setManualAttackDraft((d) => ({ ...d, description: event.target.value }))}
                     placeholder="Description (optional)"
-                    className="sm:col-span-2 w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
+                    className="ecs-ui-input sm:col-span-2 w-full rounded border border-slate-300 bg-transparent px-2 py-1 text-xs dark:border-slate-600"
                   />
                 </div>
                 <button
                   type="button"
                   onClick={() => addManualAttack()}
-                  className="w-full rounded-lg border border-slate-400 px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-500 dark:text-slate-200 dark:hover:bg-slate-800/60"
+                  className="ecs-ui-btn ecs-ui-btn-quiet w-full rounded-lg border border-slate-400 px-2 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-500 dark:text-slate-200 dark:hover:bg-slate-800/60"
                 >
                   Add to list
                 </button>
@@ -5650,11 +6979,11 @@ export default function App(): JSX.Element {
                         <div className="flex flex-wrap items-center gap-1 text-sm font-semibold">
                           <span>{attack.name}</span>
                           {attack.source === 'generated' ? (
-                            <span className="rounded bg-amber-200/70 px-1 py-0 text-[9px] font-bold uppercase tracking-wide text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
+                            <span className="ecs-ui-chip rounded bg-amber-200/70 px-1 py-0 text-[9px] font-bold uppercase tracking-wide text-amber-900 dark:bg-amber-500/20 dark:text-amber-200">
                               Gen
                             </span>
                           ) : attack.source === 'manual' ? (
-                            <span className="rounded bg-sky-200/70 px-1 py-0 text-[9px] font-bold uppercase tracking-wide text-sky-900 dark:bg-sky-500/20 dark:text-sky-100">
+                            <span className="ecs-ui-chip rounded bg-sky-200/70 px-1 py-0 text-[9px] font-bold uppercase tracking-wide text-sky-900 dark:bg-sky-500/20 dark:text-sky-100">
                               Manual
                             </span>
                           ) : null}
@@ -6097,11 +7426,6 @@ export default function App(): JSX.Element {
           </div>
         ) : null}
 
-        {appMessage ? (
-          <div className="mt-4 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900">
-            {appMessage}
-          </div>
-        ) : null}
         </div>
         </DevToolsPanel>
       </div>
@@ -6148,7 +7472,7 @@ export default function App(): JSX.Element {
                         <button
                           key={row.id}
                           type="button"
-                          onClick={() => setColorScheme(row.id)}
+                          onClick={() => applyColorSchemeSelection(row.id)}
                           className={cn(
                             'rounded-lg border px-2 py-2 text-left text-xs transition-colors',
                             colorScheme === row.id
@@ -6158,12 +7482,70 @@ export default function App(): JSX.Element {
                         >
                           <div className="font-semibold">{row.title}</div>
                           <div className="mt-0.5 text-[10px] text-slate-500 dark:text-slate-400">{row.blurb}</div>
+                          <div className="mt-0.5 text-[9px] uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                            Source cue: {THEME_SOURCE_REFS[row.id].sourceLabel}
+                          </div>
                         </button>
                       ))}
                     </div>
                   </SettingsSection>
 
                   <SettingsSection title="Layout & brightness">
+                    <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50/80 p-2 dark:border-slate-700 dark:bg-slate-900/40">
+                      <div className="mb-1 px-1 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                        Professional app presets
+                      </div>
+                      <div className="grid gap-2">
+                        {PROFESSIONAL_UI_PRESETS.map((preset) => {
+                          const isActive =
+                            colorScheme === preset.settings.colorScheme &&
+                            themeMode === preset.settings.themeMode &&
+                            useThemeLayout === preset.settings.useThemeLayout &&
+                            cornerStyle === preset.settings.cornerStyle &&
+                            chromeWeight === preset.settings.chromeWeight &&
+                            workspaceDensity === preset.settings.workspaceDensity &&
+                            sidebarPlacement === preset.settings.sidebarPlacement &&
+                            sidebarWidth === preset.settings.sidebarWidth
+                          return (
+                            <div
+                              key={preset.id}
+                              className={cn(
+                                'rounded-md border px-2 py-2',
+                                isActive
+                                  ? 'border-sky-400 bg-sky-500/10 dark:border-sky-500/60 dark:bg-sky-500/10'
+                                  : 'border-slate-200 bg-white/80 dark:border-slate-700 dark:bg-slate-900/60'
+                              )}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="text-xs font-semibold">{preset.title}</div>
+                                <button
+                                  type="button"
+                                  onClick={() => applyProfessionalUiPreset(preset)}
+                                  className={cn(
+                                    'rounded border px-1.5 py-0.5 text-[10px] font-semibold',
+                                    isActive
+                                      ? 'border-sky-400 text-sky-700 dark:text-sky-200'
+                                      : 'border-slate-300 text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800/60'
+                                  )}
+                                >
+                                  {isActive ? 'Active' : 'Apply'}
+                                </button>
+                              </div>
+                              <div className="mt-0.5 text-[10px] leading-snug text-slate-500 dark:text-slate-400">{preset.blurb}</div>
+                              <a
+                                href={preset.sourceUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-1 inline-flex text-[9px] uppercase tracking-wide text-slate-400 hover:text-slate-600 dark:text-slate-500 dark:hover:text-slate-300"
+                              >
+                                Source: {preset.sourceLabel}
+                              </a>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+
                     <SettingsField
                       label="Page layout"
                       htmlFor="theme-layout"
@@ -6412,7 +7794,7 @@ export default function App(): JSX.Element {
                           setWorkspaceDensity(layout.workspaceDensity)
                           setWorkspaceFlow(normalizeWorkspaceFlow(layout.workspaceFlow))
                           setUseThemeLayout(layout.useThemeLayout)
-                          if (layout.colorScheme) setColorScheme(parseColorScheme(layout.colorScheme))
+                          if (layout.colorScheme) applyColorSchemeSelection(parseColorScheme(layout.colorScheme))
                           setRegionFlowCustom(true)
                           setActiveUiPresetId(p.id)
                           setAppMessage(`Applied preset “${p.name}”.`)
@@ -6652,6 +8034,23 @@ export default function App(): JSX.Element {
                         <option value="off">Off — hide helper text</option>
                       </select>
                     </SettingsField>
+                    <SettingsField
+                      label="Startup splash duration"
+                      htmlFor="setting-startup-splash"
+                      hint="How long the Tactile loading splash stays visible during launch."
+                    >
+                      <select
+                        id="setting-startup-splash"
+                        value={String(startupSplashDurationMs)}
+                        onChange={(event) => setStartupSplashDurationMs(parseStartupSplashDuration(event.target.value))}
+                        className="mt-1.5 w-full rounded-md border border-slate-300 bg-transparent px-2 py-1.5 text-sm dark:border-slate-700"
+                      >
+                        <option value="1200">Quick — 1.2s</option>
+                        <option value="2200">Standard — 2.2s</option>
+                        <option value="3000">Long — 3.0s</option>
+                        <option value="4500">Extended — 4.5s</option>
+                      </select>
+                    </SettingsField>
                   </SettingsSection>
                 </div>
 
@@ -6676,6 +8075,7 @@ export default function App(): JSX.Element {
                       setMergeGeneratedAttacks(false)
                       setPersistThemePerAccount(true)
                       setUiSoundsEnabled(false)
+                      setStartupSplashDurationMs(3000)
                       setGuidedSetup(true)
                       setCompactCreator(true)
                       setCompactBattle(true)

@@ -1,5 +1,5 @@
-appId: com.epiccharacterstorage.app
-productName: EPIC CHARACTER STORAGE
+appId: com.tactile.app
+productName: Tactile
 directories:
   buildResources: build
 files:
@@ -12,13 +12,15 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: epic-character-storage
+  executableName: tactile
+  icon: build/icon.png
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
+  artifactName: tactile-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
 mac:
+  icon: build/icon.png
   entitlementsInherit: build/entitlements.mac.plist
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
@@ -27,8 +29,9 @@ mac:
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
 dmg:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: tactile-${version}.${ext}
 linux:
+  icon: build/icon.png
   target:
     - AppImage
     - snap
@@ -36,7 +39,7 @@ linux:
   maintainer: electronjs.org
   category: Utility
 appImage:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: tactile-${version}.${ext}
 npmRebuild: false
 publish:
   provider: generic

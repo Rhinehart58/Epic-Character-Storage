@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, protocol } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, protocol, nativeTheme } from 'electron'
 import { join, relative, resolve } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
@@ -30,6 +30,7 @@ import { generateAttacksFromKeywords } from '../shared/attack-generator'
 import { getSmtpStatus, sendAccountConfirmationEmail, sendTestEmail } from './mailer'
 import type { CharacterSaveInput, SyncActivityPayload, SyncChangedBroadcast } from '../shared/character-types'
 import { deletePortraitIfExists, pickAndStorePortrait, portraitsRoot } from './portraits'
+import { getPrefs, setPrefs } from './app-prefs'
 
 function publishRealtimeUpdate(
   scope: SyncChangedBroadcast['scope'],
@@ -58,12 +59,42 @@ function publishRealtimeUpdate(
 }
 
 function createWindow(): void {
+  const bootPrefs = getPrefs(['guestAppearance'])
+  let bootTheme = 'default'
+  let bootTone: 'light' | 'dark' = nativeTheme.shouldUseDarkColors ? 'dark' : 'light'
+  try {
+    const raw = bootPrefs.guestAppearance
+    if (raw) {
+      const parsed = JSON.parse(raw) as { colorScheme?: unknown; themeMode?: unknown }
+      if (typeof parsed.colorScheme === 'string') bootTheme = parsed.colorScheme
+      if (parsed.themeMode === 'dark') bootTone = 'dark'
+      else if (parsed.themeMode === 'light') bootTone = 'light'
+    }
+  } catch {
+    // ignore malformed stored appearance
+  }
+  const validThemes = new Set([
+    'default',
+    'violet',
+    'teal',
+    'sunset',
+    'wii',
+    'ps3',
+    'xbox360',
+    'cube',
+    'wiiu',
+    '3ds',
+    'bee'
+  ])
+  if (!validThemes.has(bootTheme)) bootTheme = 'default'
+
   const mainWindow = new BrowserWindow({
     width: 1024,
     height: 720,
     minWidth: 880,
     minHeight: 620,
     show: false,
+    backgroundColor: '#020617',
     autoHideMenuBar: true,
     ...(process.platform === 'linux' ? { icon } : {}),
     webPreferences: {
@@ -83,9 +114,14 @@ function createWindow(): void {
   })
 
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    const url = new URL(process.env['ELECTRON_RENDERER_URL'])
+    url.searchParams.set('bootTheme', bootTheme)
+    url.searchParams.set('bootTone', bootTone)
+    mainWindow.loadURL(url.toString())
   } else {
-    mainWindow.loadFile(join(__dirname, '../renderer/index.html'))
+    mainWindow.loadFile(join(__dirname, '../renderer/index.html'), {
+      query: { bootTheme, bootTone }
+    })
   }
 }
 
@@ -157,6 +193,10 @@ ipcMain.handle(
     resetPasswordWithToken(payload.email, payload.token, payload.newPassword)
 )
 ipcMain.handle('app:getVersion', () => app.getVersion())
+ipcMain.handle('app:getPrefs', async (_event, keys: string[]) => getPrefs(Array.isArray(keys) ? keys : []))
+ipcMain.handle('app:setPrefs', async (_event, entries: Record<string, string | null>) =>
+  setPrefs(entries && typeof entries === 'object' ? entries : {})
+)
 
 ipcMain.handle('accounts:getActive', async () => getActiveAccountId())
 ipcMain.handle('accounts:setActive', async (_event, accountId: string) => setActiveAccount(accountId))

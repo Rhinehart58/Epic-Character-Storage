@@ -6,7 +6,7 @@ import feedRaw from '../../../../update-feed.config.json'
 import { cn } from '../lib/utils'
 import { backend } from '../lib/backend'
 
-const POLL_MS = 5 * 60 * 1000
+const POLL_MS = 2 * 60 * 1000
 const POLL_MINUTES = Math.max(1, Math.round(POLL_MS / 60000))
 const bundledUpdateLog = bundledRaw as UpdateLogPayload
 
@@ -235,6 +235,13 @@ function githubRawUpdateLogUrl(config: UpdateFeedConfig): string {
   return `https://raw.githubusercontent.com/${repo}/${branch}/update-log.json`
 }
 
+function githubApiUpdateLogUrl(config: UpdateFeedConfig): string {
+  const repo = config.githubRepo?.trim()
+  if (!repo) return ''
+  const branch = (config.branch ?? 'main').trim() || 'main'
+  return `https://api.github.com/repos/${repo}/contents/update-log.json?ref=${branch}`
+}
+
 function parsePayload(raw: unknown): UpdateLogPayload | null {
   if (!raw || typeof raw !== 'object') return null
   const o = raw as Record<string, unknown>
@@ -254,6 +261,23 @@ async function fetchRemote(url: string): Promise<UpdateLogPayload | null> {
   return parsePayload(await res.json())
 }
 
+async function fetchRemoteFromGithubApi(url: string): Promise<UpdateLogPayload | null> {
+  const sep = url.includes('?') ? '&' : '?'
+  const res = await fetch(`${url}${sep}t=${Date.now()}`, {
+    cache: 'no-store',
+    headers: { Accept: 'application/vnd.github+json' }
+  })
+  if (!res.ok) return null
+  const payload = (await res.json()) as { content?: unknown; encoding?: unknown }
+  if (payload.encoding !== 'base64' || typeof payload.content !== 'string') return null
+  try {
+    const decoded = atob(payload.content.replace(/\n/g, ''))
+    return parsePayload(JSON.parse(decoded) as unknown)
+  } catch {
+    return null
+  }
+}
+
 export function LoginUpdateLog(props: { className?: string; colorScheme?: LogScheme | 'bionicle' }): JSX.Element {
   const { className, colorScheme: rawScheme = 'default' } = props
   const colorScheme: LogScheme = rawScheme === 'bionicle' ? 'default' : rawScheme
@@ -262,33 +286,57 @@ export function LoginUpdateLog(props: { className?: string; colorScheme?: LogSch
   const [appVersion, setAppVersion] = useState<string>('')
   const [lastFetchAt, setLastFetchAt] = useState<Date | null>(null)
   const [fetchStatus, setFetchStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
-  const remoteUrl =
-    (import.meta.env.VITE_UPDATE_LOG_URL as string | undefined)?.trim() ||
-    githubRawUpdateLogUrl(feedRaw as UpdateFeedConfig)
+  const config = feedRaw as UpdateFeedConfig
+  const remoteUrl = (import.meta.env.VITE_UPDATE_LOG_URL as string | undefined)?.trim() || githubRawUpdateLogUrl(config)
+  const remoteUrlCandidates = useCallback((): string[] => {
+    const out: string[] = []
+    if (remoteUrl) out.push(remoteUrl)
+    const repo = config.githubRepo?.trim()
+    const branch = (config.branch ?? 'main').trim() || 'main'
+    if (repo) {
+      out.push(`https://raw.githubusercontent.com/${repo}/${branch}/update-log.json`)
+      if (branch === 'main') out.push(`https://raw.githubusercontent.com/${repo}/master/update-log.json`)
+      out.push(`https://cdn.jsdelivr.net/gh/${repo}@${branch}/update-log.json`)
+      out.push(githubApiUpdateLogUrl(config))
+    }
+    return Array.from(new Set(out.filter(Boolean)))
+  }, [config.branch, config.githubRepo, remoteUrl])
 
   const refresh = useCallback(async (): Promise<void> => {
     setFetchStatus('loading')
     let next = parsePayload(bundledUpdateLog) ?? bundledUpdateLog
-    if (remoteUrl) {
-      try {
-        const remote = await fetchRemote(remoteUrl)
-        if (remote) next = remote
-        setFetchStatus('ok')
-      } catch {
-        setFetchStatus('error')
+    const urls = remoteUrlCandidates()
+    if (urls.length > 0) {
+      let gotRemote = false
+      for (const url of urls) {
+        try {
+          const remote = url.includes('api.github.com')
+            ? await fetchRemoteFromGithubApi(url)
+            : await fetchRemote(url)
+          if (remote) {
+            next = remote
+            gotRemote = true
+            break
+          }
+        } catch {
+          // try next candidate
+        }
       }
+      setFetchStatus(gotRemote ? 'ok' : 'error')
     } else {
       setFetchStatus('ok')
     }
     setPayload(next)
     setLastFetchAt(new Date())
-  }, [remoteUrl])
+  }, [remoteUrlCandidates])
 
+  /* eslint-disable react-hooks/set-state-in-effect -- startup fetch + interval hydration intentionally fan out into local state */
   useEffect(() => {
     void refresh()
     const id = window.setInterval(() => void refresh(), POLL_MS)
     return () => window.clearInterval(id)
   }, [refresh])
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => {
     const onVisibility = (): void => {
@@ -305,7 +353,7 @@ export function LoginUpdateLog(props: { className?: string; colorScheme?: LogSch
       .catch(() => setAppVersion(''))
   }, [])
 
-  const fromGithub = Boolean(remoteUrl?.includes('raw.githubusercontent.com'))
+  const fromGithub = Boolean(config.githubRepo?.trim())
 
   const statusLabel =
     fetchStatus === 'loading'

@@ -29,6 +29,9 @@ type AccountRow = UserAccount & {
 }
 
 const DEV_MODE_PASSWORD = 'epic-dev'
+const DEV_ACCOUNT_EMAIL = 'rhinedev@local.epic'
+const LEGACY_DEV_ACCOUNT_EMAIL = 'dev@local.epic'
+const DEV_ACCOUNT_DISPLAY_NAME = 'rhinedev'
 
 function dbPath(): string {
   return join(app.getPath('userData'), 'epic-character-storage.json')
@@ -235,6 +238,7 @@ export function createAccount(input: {
   const db = readDb()
   const email = input.email.trim().toLowerCase()
   const displayName = input.displayName.trim() || email.split('@')[0] || 'Player'
+  const normalizedDisplayName = displayName.toLowerCase()
   if (!email.includes('@')) return { ok: false, message: 'Enter a valid email address.', account: null }
   if (!passwordIsStrong(input.password)) {
     return {
@@ -245,6 +249,9 @@ export function createAccount(input: {
   }
   if (db.accounts.some((account) => account.email?.toLowerCase() === email)) {
     return { ok: false, message: 'An account with that email already exists.', account: null }
+  }
+  if (db.accounts.some((account) => account.displayName?.trim().toLowerCase() === normalizedDisplayName)) {
+    return { ok: false, message: 'That username is already taken.', account: null }
   }
 
   const account: AccountRow = {
@@ -264,11 +271,30 @@ export function createAccount(input: {
   return { ok: true, message: 'Account created.', account: safe }
 }
 
-export function loginAccount(email: string, password: string): AuthResult {
+export function loginAccount(identifier: string, password: string): AuthResult {
+  const normalized = identifier.trim().toLowerCase()
+  if (
+    normalized === DEV_ACCOUNT_EMAIL ||
+    normalized === LEGACY_DEV_ACCOUNT_EMAIL ||
+    normalized === DEV_ACCOUNT_DISPLAY_NAME.toLowerCase()
+  ) {
+    return loginDevMode(password)
+  }
+
   const db = readDb()
-  const normalized = email.trim().toLowerCase()
-  const account = db.accounts.find((row) => row.email?.toLowerCase() === normalized)
-  if (!account) return { ok: false, message: 'No account found for that email.', account: null }
+  let account = db.accounts.find((row) => row.email?.toLowerCase() === normalized) ?? null
+  if (!account) {
+    const usernameMatches = db.accounts.filter((row) => row.displayName?.trim().toLowerCase() === normalized)
+    if (usernameMatches.length > 1) {
+      return {
+        ok: false,
+        message: 'Multiple accounts use that username. Sign in with your email instead.',
+        account: null
+      }
+    }
+    account = usernameMatches[0] ?? null
+  }
+  if (!account) return { ok: false, message: 'No account found for that email or username.', account: null }
   if (account.passwordHash !== hashPassword(password)) {
     return { ok: false, message: 'Incorrect password.', account: null }
   }
@@ -281,22 +307,27 @@ export function loginAccount(email: string, password: string): AuthResult {
 
 export function loginDevMode(password: string): AuthResult {
   if (password !== DEV_MODE_PASSWORD) {
-    return { ok: false, message: 'Incorrect dev mode password.', account: null }
+    return { ok: false, message: 'Access denied.', account: null }
   }
   const db = readDb()
-  const existing = db.accounts.find((row) => row.email === 'dev@local.epic')
+  const existing = db.accounts.find(
+    (row) => row.email === DEV_ACCOUNT_EMAIL || row.email === LEGACY_DEV_ACCOUNT_EMAIL
+  )
   if (existing) {
+    if (existing.email !== DEV_ACCOUNT_EMAIL) existing.email = DEV_ACCOUNT_EMAIL
+    if (existing.displayName !== DEV_ACCOUNT_DISPLAY_NAME) existing.displayName = DEV_ACCOUNT_DISPLAY_NAME
+    existing.passwordHash = hashPassword(DEV_MODE_PASSWORD)
     db.activeAccountId = existing.id
     writeDb(db)
     const { passwordHash: _passwordHash, resetToken: _resetToken, resetTokenExpiresAt: _exp, ...safe } =
       existing
-    return { ok: true, message: 'Dev mode unlocked.', account: safe }
+    return { ok: true, message: 'Access granted.', account: safe }
   }
   const account: AccountRow = {
     id: `acct-${newId()}`,
-    displayName: 'Developer',
-    email: 'dev@local.epic',
-    passwordHash: hashPassword('dev-user-password'),
+    displayName: DEV_ACCOUNT_DISPLAY_NAME,
+    email: DEV_ACCOUNT_EMAIL,
+    passwordHash: hashPassword(DEV_MODE_PASSWORD),
     resetToken: null,
     resetTokenExpiresAt: null,
     createdAt: nowIso()
@@ -306,7 +337,7 @@ export function loginDevMode(password: string): AuthResult {
   writeDb(db)
   const { passwordHash: _passwordHash, resetToken: _resetToken, resetTokenExpiresAt: _exp, ...safe } =
     account
-  return { ok: true, message: 'Dev mode unlocked.', account: safe }
+  return { ok: true, message: 'Access granted.', account: safe }
 }
 
 export function logoutActiveAccount(): SimpleResult {

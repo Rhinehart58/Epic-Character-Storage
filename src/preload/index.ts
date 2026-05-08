@@ -99,7 +99,10 @@ const syncApi = {
 }
 
 const appApi = {
-  getVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion')
+  getVersion: (): Promise<string> => ipcRenderer.invoke('app:getVersion'),
+  getPrefs: (keys: string[]): Promise<Record<string, string | null>> => ipcRenderer.invoke('app:getPrefs', keys),
+  setPrefs: (entries: Record<string, string | null>): Promise<{ ok: true }> =>
+    ipcRenderer.invoke('app:setPrefs', entries)
 }
 
 const portraitApi = {

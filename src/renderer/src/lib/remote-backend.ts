@@ -70,7 +70,9 @@ export function createRemoteBackendStub(_options: { baseUrl: string }): IAppBack
       remove: () => err('portraitApi.remove')
     },
     appApi: {
-      getVersion: () => err('appApi.getVersion')
+      getVersion: () => err('appApi.getVersion'),
+      getPrefs: () => err('appApi.getPrefs'),
+      setPrefs: () => err('appApi.setPrefs')
     }
   }
 }

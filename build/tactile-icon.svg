@@ -1,0 +1,16 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Tactile app icon">
+  <rect x="48" y="48" width="928" height="928" rx="220" fill="#0B1220" />
+  <rect x="72" y="72" width="880" height="880" rx="196" fill="#0F172A" />
+  <path
+    d="M512 188 L618 406 L836 512 L618 618 L512 836 L406 618 L188 512 L406 406 Z"
+    fill="none"
+    stroke="#22D3EE"
+    stroke-width="56"
+    stroke-linejoin="round"
+  />
+  <path d="M512 360 V448" stroke="#22D3EE" stroke-width="56" stroke-linecap="round" />
+  <path d="M512 576 V664" stroke="#22D3EE" stroke-width="56" stroke-linecap="round" />
+  <path d="M360 512 H448" stroke="#22D3EE" stroke-width="56" stroke-linecap="round" />
+  <path d="M576 512 H664" stroke="#22D3EE" stroke-width="56" stroke-linecap="round" />
+  <rect x="468" y="468" width="88" height="88" transform="rotate(45 512 512)" fill="#22D3EE" />
+</svg>

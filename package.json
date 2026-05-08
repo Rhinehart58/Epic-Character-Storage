@@ -1,6 +1,6 @@
 {
   "name": "epic-character-storage",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Desktop RPG character manager with keyword-based attack generation",
   "main": "./out/main/index.js",
   "author": "",
@@ -21,9 +21,15 @@
     "build": "npm run typecheck && electron-vite build",
     "postinstall": "electron-builder install-app-deps",
     "build:unpack": "npm run build && electron-builder --dir",
+    "build:mac:local": "npm run build && electron-builder --mac --dir --config.mac.identity=null",
+    "build:win:local": "npm run build && electron-builder --win --dir",
+    "build:linux:local": "npm run build && electron-builder --linux --dir",
     "build:win": "npm run build && electron-builder --win",
     "build:mac": "npm run build && electron-builder --mac",
-    "build:linux": "npm run build && electron-builder --linux"
+    "build:linux": "npm run build && electron-builder --linux",
+    "version:patch": "npm version patch --no-git-tag-version",
+    "version:minor": "npm version minor --no-git-tag-version",
+    "version:major": "npm version major --no-git-tag-version"
   },
   "dependencies": {
     "@electron-toolkit/preload": "^3.0.2",
