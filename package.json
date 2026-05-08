@@ -1,6 +1,6 @@
 {
   "name": "epic-character-storage",
-  "version": "1.0.9",
+  "version": "1.0.10",
   "description": "Desktop RPG character manager with keyword-based attack generation",
   "main": "./out/main/index.js",
   "author": "",
@@ -15,6 +15,7 @@
     "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:node && npm run typecheck:web",
+    "verify:update-log": "node scripts/verify-update-log-change.mjs",
     "verify": "npm run typecheck",
     "start": "electron-vite preview",
     "dev": "electron-vite dev",

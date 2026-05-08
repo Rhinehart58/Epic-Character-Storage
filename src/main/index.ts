@@ -1,5 +1,6 @@
 import { app, shell, BrowserWindow, ipcMain, protocol, nativeTheme } from 'electron'
 import { join, relative, resolve } from 'path'
+import { existsSync } from 'fs'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { autoUpdater } from 'electron-updater'
@@ -41,6 +42,20 @@ type UpdateStatusPayload = {
 }
 
 let updateStatus: UpdateStatusPayload = { phase: 'idle' }
+
+function detectLegacyInstallPaths(): string[] {
+  if (process.platform !== 'darwin') return []
+  const homeApps = join(app.getPath('home'), 'Applications')
+  const candidates = [
+    '/Applications/Epic Character Storage.app',
+    '/Applications/epic-character-storage.app',
+    '/Applications/Epic-Character-Storage.app',
+    join(homeApps, 'Epic Character Storage.app'),
+    join(homeApps, 'epic-character-storage.app'),
+    join(homeApps, 'Epic-Character-Storage.app')
+  ]
+  return candidates.filter((path) => existsSync(path))
+}
 
 function publishUpdateStatus(payload: UpdateStatusPayload): void {
   updateStatus = payload
@@ -283,6 +298,12 @@ ipcMain.handle('app:updateInstall', async () => {
   }
   setImmediate(() => autoUpdater.quitAndInstall())
   return { ok: true as const }
+})
+ipcMain.handle('app:getLegacyInstalls', async () => ({ paths: detectLegacyInstallPaths() }))
+ipcMain.handle('app:openPath', async (_event, path: string) => {
+  if (typeof path !== 'string' || !path.trim()) return { ok: false as const, message: 'Invalid path.' }
+  const error = await shell.openPath(path)
+  return error ? { ok: false as const, message: error } : { ok: true as const }
 })
 
 ipcMain.handle('accounts:getActive', async () => getActiveAccountId())

@@ -87,6 +87,7 @@ const REMEMBER_LOGIN_KEY = 'ecs_remember_login_v1'
 const PREF_REMEMBER_LOGIN = 'rememberLogin'
 const PREF_GUEST_APPEARANCE = 'guestAppearance'
 const UPDATE_PROMPT_DISMISSED_KEY = 'ecs_update_prompt_dismissed_v1'
+const LEGACY_INSTALL_PROMPT_DISMISSED_KEY = 'ecs_legacy_install_prompt_dismissed_v1'
 const STARTUP_SPLASH_DURATION_KEY = 'ecs_startup_splash_ms_v1'
 const UPDATE_CHECK_MS = 15 * 60 * 1000
 
@@ -2189,12 +2190,23 @@ export default function App(): JSX.Element {
       return null
     }
   })
+  const [legacyInstallPaths, setLegacyInstallPaths] = useState<string[]>([])
+  const [dismissLegacyCleanupPrompt, setDismissLegacyCleanupPrompt] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      return window.localStorage.getItem(LEGACY_INSTALL_PROMPT_DISMISSED_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
   const updaterApiAvailable =
     typeof backend.appApi.updateStatus === 'function' &&
     typeof backend.appApi.updateCheck === 'function' &&
     typeof backend.appApi.updateDownload === 'function' &&
     typeof backend.appApi.updateInstall === 'function' &&
     typeof backend.appApi.onUpdateStatus === 'function'
+  const legacyInstallApiAvailable =
+    typeof backend.appApi.getLegacyInstalls === 'function' && typeof backend.appApi.openPath === 'function'
   const devUnlockTapCountRef = useRef(0)
   const [devPanelTab, setDevPanelTab] = useState<DevPanelTab>(() => {
     if (typeof window === 'undefined') return 'workbench'
@@ -2498,6 +2510,24 @@ export default function App(): JSX.Element {
     if (updateStatus.phase !== 'error' || !updateStatus.message) return
     setAppMessage(updateStatus.message)
   }, [updateStatus])
+
+  useEffect(() => {
+    if (!legacyInstallApiAvailable) return
+    void backend.appApi
+      .getLegacyInstalls()
+      .then((payload) => setLegacyInstallPaths(Array.isArray(payload.paths) ? payload.paths : []))
+      .catch(() => setLegacyInstallPaths([]))
+  }, [legacyInstallApiAvailable])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      if (dismissLegacyCleanupPrompt) window.localStorage.setItem(LEGACY_INSTALL_PROMPT_DISMISSED_KEY, '1')
+      else window.localStorage.removeItem(LEGACY_INSTALL_PROMPT_DISMISSED_KEY)
+    } catch {
+      // ignore localStorage write issues
+    }
+  }, [dismissLegacyCleanupPrompt])
 
   useEffect(() => {
     if (!updaterApiAvailable) return
@@ -4658,6 +4688,13 @@ export default function App(): JSX.Element {
     const result = await backend.appApi.updateInstall().catch(() => ({ ok: false as const, message: 'Install failed.' }))
     if (!result.ok) setAppMessage(result.message ?? 'Install failed.')
   }, [updaterApiAvailable])
+  const handleRevealLegacyInstall = useCallback(async (): Promise<void> => {
+    if (!legacyInstallApiAvailable) return
+    const path = legacyInstallPaths[0]
+    if (!path) return
+    const result = await backend.appApi.openPath(path).catch(() => ({ ok: false as const, message: 'Unable to open path.' }))
+    if (!result.ok) setAppMessage(result.message ?? 'Unable to open path.')
+  }, [legacyInstallApiAvailable, legacyInstallPaths])
   const updatePrompt = shouldShowUpdatePrompt ? (
     <div className="pointer-events-auto fixed left-1/2 top-3 z-[130] flex w-[min(94vw,42rem)] -translate-x-1/2 items-start gap-3 rounded-xl border-2 border-emerald-300 bg-white/95 px-3 py-2.5 text-sm text-zinc-900 shadow-xl backdrop-blur-sm motion-safe:animate-ecs-pop-in dark:border-emerald-500/45 dark:bg-zinc-950/95 dark:text-zinc-50">
       <span aria-hidden className="mt-0.5 shrink-0 text-base leading-none text-emerald-600 dark:text-emerald-300">
@@ -4735,6 +4772,40 @@ export default function App(): JSX.Element {
     </div>
   ) : null
   const hasUpdateBanner = Boolean(updatePrompt || installPrompt)
+  const showLegacyInstallPrompt =
+    legacyInstallApiAvailable && !dismissLegacyCleanupPrompt && legacyInstallPaths.length > 0
+  const legacyInstallPrompt = showLegacyInstallPrompt ? (
+    <div
+      className={cn(
+        'pointer-events-auto fixed left-1/2 z-[129] flex w-[min(94vw,46rem)] -translate-x-1/2 items-start gap-3 rounded-xl border border-amber-300/85 bg-amber-50/95 px-3 py-2.5 text-sm text-amber-950 shadow-xl backdrop-blur-sm motion-safe:animate-ecs-pop-in dark:border-amber-500/45 dark:bg-zinc-950/95 dark:text-amber-100',
+        hasUpdateBanner ? 'top-[4.25rem]' : 'top-3'
+      )}
+    >
+      <span aria-hidden className="mt-0.5 shrink-0 text-base leading-none text-amber-700 dark:text-amber-300">
+        !
+      </span>
+      <div className="min-w-0 flex-1 leading-snug">
+        Found older app install{legacyInstallPaths.length > 1 ? 's' : ''} on this Mac. Delete them to avoid opening the wrong
+        version by mistake.
+      </div>
+      <button
+        type="button"
+        onClick={() => void handleRevealLegacyInstall()}
+        className="ecs-interactive shrink-0 rounded-md border border-amber-400/75 bg-amber-500 px-2 py-1 text-xs font-semibold text-white hover:bg-amber-600 dark:border-amber-500/45 dark:bg-amber-600 dark:hover:bg-amber-500"
+      >
+        Show old app
+      </button>
+      <button
+        type="button"
+        aria-label="Dismiss cleanup prompt"
+        onClick={() => setDismissLegacyCleanupPrompt(true)}
+        className="ecs-interactive shrink-0 rounded-md border border-zinc-300 px-1.5 py-0.5 text-[11px] font-semibold text-zinc-600 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800/60"
+      >
+        ×
+      </button>
+    </div>
+  ) : null
+  const hasTopBanner = Boolean(updatePrompt || installPrompt || legacyInstallPrompt)
 
   if (!isAuthed) {
     const authField = cn('ecs-ui-input w-full px-3 py-2', ecsWideControlRound(colorScheme), loginAuthFieldClass)
@@ -4749,6 +4820,7 @@ export default function App(): JSX.Element {
         <EcsPaletteBackdrop />
         {updatePrompt}
         {installPrompt}
+        {legacyInstallPrompt}
         {updateOverlay}
         <div className="relative z-[1] px-4 py-6">
           <div className={cn('mx-auto w-full', loginShellMaxClass)}>
@@ -5318,13 +5390,14 @@ export default function App(): JSX.Element {
     <div className={cn('ecs-theme-shell ecs-signature-shell relative min-h-screen overflow-x-clip overflow-y-visible leading-relaxed', shellText)}>
       {updatePrompt}
       {installPrompt}
+      {legacyInstallPrompt}
       {updateOverlay}
       {syncBanner ? (
         <div
           role="status"
           className={cn(
             'pointer-events-auto fixed left-1/2 z-[120] flex max-w-md -translate-x-1/2 items-start gap-2 rounded-xl border border-sky-200/90 bg-sky-50/95 px-3 py-2 text-sm text-sky-950 shadow-lg backdrop-blur-sm motion-safe:animate-ecs-pop-in dark:border-sky-500/35 dark:bg-sky-950/90 dark:text-sky-50',
-            hasUpdateBanner ? 'top-[4.25rem]' : 'top-3'
+            hasTopBanner ? 'top-[4.25rem]' : 'top-3'
           )}
         >
           <span aria-hidden className="mt-0.5 shrink-0 text-base leading-none">↻</span>
@@ -5349,7 +5422,7 @@ export default function App(): JSX.Element {
           aria-live="polite"
           className={cn(
             'pointer-events-auto fixed right-4 z-[125] flex w-[min(92vw,22rem)] items-start gap-2 rounded-xl border-2 border-amber-300 bg-white/95 px-3 py-2.5 text-sm text-zinc-900 shadow-xl backdrop-blur-sm motion-safe:animate-ecs-pop-in dark:border-amber-500/45 dark:bg-zinc-950/95 dark:text-zinc-50',
-            syncBanner && hasUpdateBanner ? 'top-[8.5rem]' : syncBanner || hasUpdateBanner ? 'top-[4.25rem]' : 'top-3'
+            syncBanner && hasTopBanner ? 'top-[8.5rem]' : syncBanner || hasTopBanner ? 'top-[4.25rem]' : 'top-3'
           )}
         >
           <span aria-hidden className="mt-0.5 shrink-0 text-base leading-none text-amber-600 dark:text-amber-300">

@@ -112,6 +112,8 @@ const appApi = {
   updateCheck: (): Promise<{ ok: boolean; message?: string }> => ipcRenderer.invoke('app:updateCheck'),
   updateDownload: (): Promise<{ ok: boolean; message?: string }> => ipcRenderer.invoke('app:updateDownload'),
   updateInstall: (): Promise<{ ok: boolean; message?: string }> => ipcRenderer.invoke('app:updateInstall'),
+  getLegacyInstalls: (): Promise<{ paths: string[] }> => ipcRenderer.invoke('app:getLegacyInstalls'),
+  openPath: (path: string): Promise<{ ok: boolean; message?: string }> => ipcRenderer.invoke('app:openPath', path),
   onUpdateStatus: (
     callback: (payload: {
       phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'

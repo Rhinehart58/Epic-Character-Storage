@@ -23,5 +23,12 @@ jobs:
       - name: Install
         run: npm ci
 
+      - name: Require update log entry for app changes
+        run: node scripts/verify-update-log-change.mjs
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          GITHUB_EVENT_BEFORE: ${{ github.event.before }}
+          GITHUB_BASE_REF: ${{ github.base_ref }}
+
       - name: Typecheck (main + renderer)
         run: npm run verify

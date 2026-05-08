@@ -1,6 +1,12 @@
 {
-  "updatedAt": "2026-05-07T20:00:00.000Z",
+  "updatedAt": "2026-05-08T22:30:00.000Z",
   "entries": [
+    {
+      "id": "ecs-2026-05-08-v1-0-9-updater-log-reliability",
+      "date": "2026-05-08",
+      "title": "v1.0.9: In-app updater + stronger update log reliability",
+      "details": "Tactile now supports in-app update flow in packaged builds: check for update, download with progress screen, and restart-to-install. Login update log fetch behavior was hardened with timeout guards, no-cache headers, local cache fallback, request de-duping, and safer visibility polling so notes refresh more consistently when GitHub is slow."
+    },
     {
       "id": "ecs-2026-05-07-layout-presets-shape-vocab",
       "date": "2026-05-07",

@@ -6,9 +6,10 @@ import feedRaw from '../../../../update-feed.config.json'
 import { cn } from '../lib/utils'
 import { backend } from '../lib/backend'
 
-const POLL_MS = 2 * 60 * 1000
+const POLL_MS = 10 * 60 * 1000
 const POLL_MINUTES = Math.max(1, Math.round(POLL_MS / 60000))
 const REMOTE_TIMEOUT_MS = 8000
+const VISIBILITY_REFRESH_MIN_GAP_MS = 5 * 60 * 1000
 const CACHE_KEY = 'ecs_update_log_cache_v1'
 const bundledUpdateLog = bundledRaw as UpdateLogPayload
 
@@ -393,7 +394,7 @@ export function LoginUpdateLog(props: { className?: string; colorScheme?: LogSch
   useEffect(() => {
     const onVisibility = (): void => {
       if (document.visibilityState !== 'visible') return
-      if (Date.now() - lastFetchAtRef.current < 30_000) return
+      if (Date.now() - lastFetchAtRef.current < VISIBILITY_REFRESH_MIN_GAP_MS) return
       void refresh()
     }
     document.addEventListener('visibilitychange', onVisibility)
