@@ -523,6 +523,10 @@ const SESSION_TIMEOUT_MS = 20 * 60 * 1000
 const DRAG_HINT_DISMISSED_KEY = 'ecs.dragHint.dismissed.v1'
 const DEV_ACCOUNT_EMAIL = 'rhinedev@local.epic'
 const DEV_LAB_FLAGS_KEY = 'ecs.dev.lab.flags.v1'
+const INSTALL_HELP_OPEN_KEY = 'ecs.install.help.open.v1'
+const RELEASES_LATEST_URL = 'https://github.com/Rhinehart58/Epic-Character-Storage/releases/latest'
+const MAC_INSTALL_WORKAROUND_COMMAND =
+  'curl -fsSL "https://raw.githubusercontent.com/Rhinehart58/Epic-Character-Storage/main/scripts/install-macos-workaround.sh" | bash -s -- latest'
 
 type DevLabFlags = {
   showUiBounds: boolean
@@ -2186,6 +2190,15 @@ export default function App(): JSX.Element {
   const [lastUpdateCheckAt, setLastUpdateCheckAt] = useState<number | null>(null)
   const [manualUpdateCheckPending, setManualUpdateCheckPending] = useState(false)
   const [manualUpdatePopup, setManualUpdatePopup] = useState<string | null>(null)
+  const [showInstallHelp, setShowInstallHelp] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      return window.localStorage.getItem(INSTALL_HELP_OPEN_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
+  const [loginAutoUpdateNoticeShown, setLoginAutoUpdateNoticeShown] = useState(false)
   const [trustHelperDismissed, setTrustHelperDismissed] = useState<boolean>(() => {
     if (typeof window === 'undefined') return false
     try {
@@ -2379,6 +2392,15 @@ export default function App(): JSX.Element {
   }, [rememberLogin, prefsHydrated])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      window.localStorage.setItem(INSTALL_HELP_OPEN_KEY, showInstallHelp ? '1' : '0')
+    } catch {
+      // ignore localStorage write issues
+    }
+  }, [showInstallHelp])
+
+  useEffect(() => {
     if (!updaterApiAvailable) return
     let cancelled = false
     void backend.appApi
@@ -2539,6 +2561,15 @@ export default function App(): JSX.Element {
   }, [updateStatus])
 
   useEffect(() => {
+    if (isAuthed) return
+    if (loginAutoUpdateNoticeShown) return
+    if (updateStatus.phase !== 'available') return
+    const label = updateStatus.version ? `Update available: v${updateStatus.version}.` : 'Update available.'
+    setManualUpdatePopup(label)
+    setLoginAutoUpdateNoticeShown(true)
+  }, [isAuthed, loginAutoUpdateNoticeShown, updateStatus.phase, updateStatus.version])
+
+  useEffect(() => {
     if (updateStatus.phase === 'checking') setLastUpdateCheckAt(Date.now())
   }, [updateStatus.phase])
 
@@ -2593,23 +2624,26 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     if (!updaterApiAvailable) return
-    const checkForUpdates = async (): Promise<void> => {
+    const checkForUpdates = async (silent = false): Promise<void> => {
       const result: { ok: boolean; message?: string } = await backend.appApi
         .updateCheck()
         .catch(() => ({ ok: false, message: 'Unable to check for updates.' }))
-      if (!result.ok && result.message) setAppMessage(result.message)
+      if (!silent && !result.ok && result.message) setAppMessage(result.message)
     }
-    void checkForUpdates()
-    const intervalId = window.setInterval(() => void checkForUpdates(), UPDATE_CHECK_MS)
+    const startupDelay = window.setTimeout(() => {
+      if (!isAuthed) void checkForUpdates(true)
+    }, 2200)
+    const intervalId = window.setInterval(() => void checkForUpdates(true), UPDATE_CHECK_MS)
     const onVisibility = (): void => {
-      if (document.visibilityState === 'visible') void checkForUpdates()
+      if (document.visibilityState === 'visible') void checkForUpdates(true)
     }
     document.addEventListener('visibilitychange', onVisibility)
     return () => {
+      window.clearTimeout(startupDelay)
       window.clearInterval(intervalId)
       document.removeEventListener('visibilitychange', onVisibility)
     }
-  }, [updaterApiAvailable])
+  }, [isAuthed, updaterApiAvailable])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -4789,6 +4823,47 @@ export default function App(): JSX.Element {
     }
     setManualUpdatePopup('Repair install started. The app will close and relaunch.')
   }, [repairInstallApiAvailable])
+  const handleCopyInstallHelp = useCallback(async (): Promise<void> => {
+    if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+      setAuthMessage('Clipboard copy is unavailable in this environment.')
+      return
+    }
+    const copyText = hostPlatform === 'mac' ? MAC_INSTALL_WORKAROUND_COMMAND : RELEASES_LATEST_URL
+    try {
+      await navigator.clipboard.writeText(copyText)
+      setManualUpdatePopup(hostPlatform === 'mac' ? 'Install command copied.' : 'Release link copied.')
+    } catch {
+      setAuthMessage('Could not copy install instructions.')
+    }
+  }, [hostPlatform])
+  const handleOpenLatestRelease = useCallback((): void => {
+    if (typeof window === 'undefined') return
+    window.open(RELEASES_LATEST_URL, '_blank', 'noopener,noreferrer')
+  }, [])
+  const handleCopyInstallDiagnostics = useCallback(async (): Promise<void> => {
+    if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+      setAuthMessage('Clipboard copy is unavailable in this environment.')
+      return
+    }
+    const lines = [
+      `timestamp=${new Date().toISOString()}`,
+      `platform=${hostPlatform}`,
+      `installedVersion=${appVersion ?? 'unknown'}`,
+      `latestKnownVersion=${updateStatus.version ?? 'unknown'}`,
+      `updaterPhase=${updateStatus.phase}`,
+      `updaterMessage=${updateStatus.message ?? ''}`,
+      `updaterApiAvailable=${updaterApiAvailable ? 'true' : 'false'}`,
+      `legacyInstallPaths=${legacyInstallPaths.length}`,
+      `isAuthed=${isAuthed ? 'true' : 'false'}`,
+      `authMode=${authMode}`
+    ]
+    try {
+      await navigator.clipboard.writeText(lines.join('\n'))
+      setManualUpdatePopup('Install diagnostics copied.')
+    } catch {
+      setAuthMessage('Could not copy diagnostics.')
+    }
+  }, [appVersion, authMode, hostPlatform, isAuthed, legacyInstallPaths.length, updateStatus, updaterApiAvailable])
   const updatePrompt = shouldShowUpdatePrompt ? (
     <div className="pointer-events-auto fixed left-1/2 top-3 z-[130] flex w-[min(94vw,42rem)] -translate-x-1/2 items-start gap-3 rounded-xl border-2 border-emerald-300 bg-white/95 px-3 py-2.5 text-sm text-zinc-900 shadow-xl backdrop-blur-sm motion-safe:animate-ecs-pop-in dark:border-emerald-500/45 dark:bg-zinc-950/95 dark:text-zinc-50">
       <span aria-hidden className="mt-0.5 shrink-0 text-base leading-none text-emerald-600 dark:text-emerald-300">
@@ -4917,6 +4992,12 @@ export default function App(): JSX.Element {
           minute: '2-digit'
         })}`
     : 'Not checked yet'
+  const showDevInstallDiagnostics = authMode === 'dev'
+  const isKnownLatestVersion = Boolean(updateStatus.version)
+  const isRunningLatestVersion =
+    Boolean(appVersion && updateStatus.version) && appVersion?.trim() === updateStatus.version?.trim()
+  const showUpdaterFailureFallback = updateStatus.phase === 'error'
+  const showLoginUpdateDot = !isAuthed && updateStatus.phase === 'available'
   const manualUpdatePopupBanner = manualUpdatePopup ? (
     <div className="pointer-events-auto fixed bottom-20 right-4 z-[150] flex w-[min(92vw,22rem)] items-start gap-2 rounded-lg border border-emerald-300 bg-white/95 px-3 py-2 text-sm text-emerald-900 shadow-xl backdrop-blur-sm motion-safe:animate-ecs-pop-in dark:border-emerald-500/45 dark:bg-zinc-950/95 dark:text-emerald-100">
       <span aria-hidden className="mt-0.5 shrink-0 text-base leading-none text-emerald-600 dark:text-emerald-300">
@@ -4947,7 +5028,7 @@ export default function App(): JSX.Element {
         : 'If your OS flags the app on first run, follow release notes trust steps before launching again.'
   const trustHelperCommand =
     hostPlatform === 'mac'
-      ? 'curl -fsSL "https://raw.githubusercontent.com/Rhinehart58/Epic-Character-Storage/main/scripts/install-macos-workaround.sh" | bash -s -- latest'
+      ? MAC_INSTALL_WORKAROUND_COMMAND
       : null
   const trustHelperPanel = !trustHelperDismissed ? (
     <div className="fixed bottom-4 left-4 z-[140] w-[min(92vw,28rem)] rounded-lg border border-slate-300/70 bg-white/92 p-3 text-slate-800 shadow-xl backdrop-blur-sm dark:border-slate-700/70 dark:bg-slate-950/90 dark:text-slate-100">
@@ -4962,16 +5043,6 @@ export default function App(): JSX.Element {
             <code className="mt-2 block overflow-x-auto rounded border border-slate-200/80 bg-slate-50 px-2 py-1 text-[10px] leading-relaxed text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
               {trustHelperCommand}
             </code>
-          ) : null}
-          {hostPlatform === 'mac' ? (
-            <button
-              type="button"
-              onClick={() => void handleRepairInstall()}
-              className="ecs-interactive mt-2 rounded border border-sky-300/80 bg-sky-500 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-sky-600 dark:border-sky-500/55 dark:bg-sky-600 dark:hover:bg-sky-500"
-              disabled={!repairInstallApiAvailable}
-            >
-              Repair/Reinstall app
-            </button>
           ) : null}
         </div>
         <button
@@ -5236,7 +5307,15 @@ export default function App(): JSX.Element {
                         className="select-none rounded px-2 py-0.5 text-[10px] font-medium tracking-wide text-slate-400/70 hover:text-slate-500 dark:text-slate-500/70 dark:hover:text-slate-400"
                         aria-label="App build stamp"
                       >
-                        {appVersion ? `v${appVersion}` : ' '}
+                        <span className="inline-flex items-center gap-1">
+                          {appVersion ? `v${appVersion}` : ' '}
+                          {showLoginUpdateDot ? (
+                            <span
+                              className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.24)] motion-safe:animate-pulse"
+                              aria-label="Update available"
+                            />
+                          ) : null}
+                        </span>
                       </button>
                     </div>
                   </section>
@@ -5555,7 +5634,15 @@ export default function App(): JSX.Element {
                       className="select-none rounded px-2 py-0.5 text-[10px] font-medium tracking-wide text-slate-400/70 hover:text-slate-500 dark:text-slate-500/70 dark:hover:text-slate-400"
                       aria-label="App build stamp"
                     >
-                      {appVersion ? `v${appVersion}` : ' '}
+                      <span className="inline-flex items-center gap-1">
+                        {appVersion ? `v${appVersion}` : ' '}
+                        {showLoginUpdateDot ? (
+                          <span
+                            className="inline-block h-1.5 w-1.5 rounded-full bg-emerald-500 shadow-[0_0_0_2px_rgba(16,185,129,0.24)] motion-safe:animate-pulse"
+                            aria-label="Update available"
+                          />
+                        ) : null}
+                      </span>
                     </button>
                   </div>
                 </section>
@@ -5564,19 +5651,133 @@ export default function App(): JSX.Element {
           </div>
         </div>
         <div className="fixed bottom-4 right-4 z-[140] flex flex-col items-end gap-1.5 rounded-lg border border-slate-300/70 bg-white/85 p-2 shadow-xl backdrop-blur-sm dark:border-slate-700/70 dark:bg-slate-950/82">
-          <button
-            type="button"
-            onClick={() => void handleManualUpdateCheck()}
-            disabled={isCheckingUpdates}
-            className="ecs-interactive inline-flex items-center gap-1.5 rounded-md border border-sky-300/80 bg-sky-500 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-70 dark:border-sky-500/55 dark:bg-sky-600 dark:hover:bg-sky-500"
-          >
-            <span aria-hidden>{isCheckingUpdates ? '↻' : '⟳'}</span>
-            {isCheckingUpdates ? 'Checking updates...' : 'Check for updates'}
-          </button>
+          <div className="flex flex-wrap items-center justify-end gap-1.5">
+            <button
+              type="button"
+              onClick={() => void handleManualUpdateCheck()}
+              disabled={isCheckingUpdates}
+              className="ecs-interactive inline-flex items-center gap-1.5 rounded-md border border-sky-300/80 bg-sky-500 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-70 dark:border-sky-500/55 dark:bg-sky-600 dark:hover:bg-sky-500"
+            >
+              <span aria-hidden>{isCheckingUpdates ? '↻' : '⟳'}</span>
+              {isCheckingUpdates ? 'Checking updates...' : 'Check for updates'}
+            </button>
+            {hostPlatform === 'mac' ? (
+              <button
+                type="button"
+                onClick={() => void handleRepairInstall()}
+                disabled={!repairInstallApiAvailable || updateStatus.phase === 'installing'}
+                className="ecs-interactive inline-flex items-center gap-1.5 rounded-md border border-emerald-300/80 bg-emerald-500 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-white hover:bg-emerald-600 disabled:cursor-not-allowed disabled:opacity-70 dark:border-emerald-500/55 dark:bg-emerald-600 dark:hover:bg-emerald-500"
+              >
+                <span aria-hidden>↺</span>
+                Repair/Reinstall
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => setShowInstallHelp((prev) => !prev)}
+              className="ecs-interactive inline-flex items-center gap-1.5 rounded-md border border-violet-300/80 bg-violet-500 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-white hover:bg-violet-600 dark:border-violet-500/55 dark:bg-violet-600 dark:hover:bg-violet-500"
+            >
+              <span aria-hidden>?</span>
+              Install help
+            </button>
+          </div>
           <p className="px-1 text-[10px] text-slate-600 dark:text-slate-300">
             {lastCheckedLabel}
           </p>
         </div>
+        {showInstallHelp ? (
+          <div className="fixed bottom-20 right-4 z-[145] w-[min(94vw,30rem)] rounded-xl border border-violet-300/65 bg-white/96 p-3 text-slate-800 shadow-2xl backdrop-blur-sm dark:border-violet-500/35 dark:bg-slate-950/95 dark:text-slate-100">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-700 dark:text-violet-300">
+                  Install helper
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-700 dark:text-slate-200">
+                  {hostPlatform === 'mac'
+                    ? 'Start with Repair/Reinstall. If macOS still blocks launch, run the fallback command below.'
+                    : 'Start with Check for updates, then open the latest release for a clean reinstall if needed.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowInstallHelp(false)}
+                className="ecs-interactive shrink-0 rounded-md border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+                aria-label="Dismiss install helper"
+              >
+                ×
+              </button>
+            </div>
+            {hostPlatform === 'mac' ? (
+              <code className="mt-2 block overflow-x-auto rounded-md border border-slate-200/80 bg-slate-50 px-2 py-1.5 text-[10px] leading-relaxed text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+                {MAC_INSTALL_WORKAROUND_COMMAND}
+              </code>
+            ) : null}
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => void handleCopyInstallHelp()}
+                className="ecs-interactive inline-flex items-center gap-1.5 rounded-md border border-violet-300/80 bg-violet-500 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-violet-600 dark:border-violet-500/55 dark:bg-violet-600 dark:hover:bg-violet-500"
+              >
+                <span aria-hidden>⧉</span>
+                {hostPlatform === 'mac' ? 'Copy command' : 'Copy release link'}
+              </button>
+              <button
+                type="button"
+                onClick={handleOpenLatestRelease}
+                className="ecs-interactive inline-flex items-center gap-1.5 rounded-md border border-slate-300/80 bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700 hover:bg-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+              >
+                <span aria-hidden>↗</span>
+                Open latest release
+              </button>
+              {showUpdaterFailureFallback ? (
+                <button
+                  type="button"
+                  onClick={handleOpenLatestRelease}
+                  className="ecs-interactive inline-flex items-center gap-1 rounded-md border border-rose-300/80 bg-rose-500 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-rose-600 dark:border-rose-500/55 dark:bg-rose-600 dark:hover:bg-rose-500"
+                >
+                  <span aria-hidden>!</span>
+                  Updater failed: open release
+                </button>
+              ) : null}
+            </div>
+            {showDevInstallDiagnostics ? (
+              <div className="mt-3 rounded-md border border-dashed border-slate-300/85 bg-slate-50/85 p-2 dark:border-slate-700/85 dark:bg-slate-900/60">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Dev diagnostics
+                </p>
+                <ul className="mt-1 space-y-1 text-[11px] leading-snug">
+                  <li>
+                    Updater API: <strong>{updaterApiAvailable ? 'Available' : 'Unavailable'}</strong>
+                  </li>
+                  <li>
+                    Installed app version: <strong>{appVersion ? `v${appVersion}` : 'Unknown'}</strong>
+                  </li>
+                  <li>
+                    Latest known release: <strong>{isKnownLatestVersion ? `v${updateStatus.version}` : 'Unknown (run check)'}</strong>
+                  </li>
+                  {isKnownLatestVersion ? (
+                    <li>
+                      Version match: <strong>{isRunningLatestVersion ? 'Current' : 'Update available'}</strong>
+                    </li>
+                  ) : null}
+                  {hostPlatform === 'mac' ? (
+                    <li>
+                      Legacy install paths: <strong>{legacyInstallPaths.length}</strong>
+                    </li>
+                  ) : null}
+                </ul>
+                <button
+                  type="button"
+                  onClick={() => void handleCopyInstallDiagnostics()}
+                  className="ecs-interactive mt-2 inline-flex items-center gap-1 rounded-md border border-slate-300/80 bg-slate-100 px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-slate-700 hover:bg-slate-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100 dark:hover:bg-slate-700"
+                >
+                  <span aria-hidden>⧉</span>
+                  Copy diagnostics
+                </button>
+              </div>
+            ) : null}
+          </div>
+        ) : null}
       </div>
     )
   }
