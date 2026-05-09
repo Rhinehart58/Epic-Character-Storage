@@ -2182,6 +2182,7 @@ export default function App(): JSX.Element {
   const [devCommandQuery, setDevCommandQuery] = useState('')
   const [appVersion, setAppVersion] = useState<string | null>(null)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ phase: 'idle' })
+  const [lastUpdateCheckAt, setLastUpdateCheckAt] = useState<number | null>(null)
   const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null
     try {
@@ -2510,6 +2511,10 @@ export default function App(): JSX.Element {
     if (updateStatus.phase !== 'error' || !updateStatus.message) return
     setAppMessage(updateStatus.message)
   }, [updateStatus])
+
+  useEffect(() => {
+    if (updateStatus.phase === 'checking') setLastUpdateCheckAt(Date.now())
+  }, [updateStatus.phase])
 
   useEffect(() => {
     if (!legacyInstallApiAvailable) return
@@ -4695,6 +4700,18 @@ export default function App(): JSX.Element {
     const result = await backend.appApi.openPath(path).catch(() => ({ ok: false as const, message: 'Unable to open path.' }))
     if (!result.ok) setAppMessage(result.message ?? 'Unable to open path.')
   }, [legacyInstallApiAvailable, legacyInstallPaths])
+  const handleManualUpdateCheck = useCallback(async (): Promise<void> => {
+    if (!updaterApiAvailable) {
+      setAuthMessage('Update checks are available in packaged desktop builds.')
+      return
+    }
+    setLastUpdateCheckAt(Date.now())
+    const result: { ok: boolean; message?: string } = await backend.appApi
+      .updateCheck()
+      .catch(() => ({ ok: false, message: 'Unable to check for updates.' }))
+    if (!result.ok && result.message) setAuthMessage(result.message)
+    else if (result.ok) setAuthMessage('Checking for updates...')
+  }, [updaterApiAvailable])
   const updatePrompt = shouldShowUpdatePrompt ? (
     <div className="pointer-events-auto fixed left-1/2 top-3 z-[130] flex w-[min(94vw,42rem)] -translate-x-1/2 items-start gap-3 rounded-xl border-2 border-emerald-300 bg-white/95 px-3 py-2.5 text-sm text-zinc-900 shadow-xl backdrop-blur-sm motion-safe:animate-ecs-pop-in dark:border-emerald-500/45 dark:bg-zinc-950/95 dark:text-zinc-50">
       <span aria-hidden className="mt-0.5 shrink-0 text-base leading-none text-emerald-600 dark:text-emerald-300">
@@ -4806,6 +4823,13 @@ export default function App(): JSX.Element {
     </div>
   ) : null
   const hasTopBanner = Boolean(updatePrompt || installPrompt || legacyInstallPrompt)
+  const isCheckingUpdates = updateStatus.phase === 'checking'
+  const lastCheckedLabel = lastUpdateCheckAt
+    ? `Last checked ${new Date(lastUpdateCheckAt).toLocaleTimeString(undefined, {
+        hour: 'numeric',
+        minute: '2-digit'
+      })}`
+    : 'Not checked yet'
 
   if (!isAuthed) {
     const authField = cn('ecs-ui-input w-full px-3 py-2', ecsWideControlRound(colorScheme), loginAuthFieldClass)
@@ -5381,6 +5405,19 @@ export default function App(): JSX.Element {
               </div>
             )}
           </div>
+        </div>
+        <div className="fixed bottom-4 right-4 z-[140] flex flex-col items-end gap-1">
+          <button
+            type="button"
+            onClick={() => void handleManualUpdateCheck()}
+            disabled={isCheckingUpdates}
+            className="ecs-interactive rounded-md border border-slate-300/85 bg-white/90 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-700 shadow-lg backdrop-blur-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-600 dark:bg-slate-900/85 dark:text-slate-200 dark:hover:bg-slate-900"
+          >
+            {isCheckingUpdates ? 'Checking updates...' : 'Check for updates'}
+          </button>
+          <p className="rounded bg-white/80 px-2 py-0.5 text-[10px] text-slate-600 shadow dark:bg-slate-900/75 dark:text-slate-300">
+            {lastCheckedLabel}
+          </p>
         </div>
       </div>
     )
