@@ -39,7 +39,7 @@ Desktop app for logging tabletop RPG characters with clean UI, bracket-style cha
 ## Run locally
 
 ```bash
-cd /Users/rhinehart/Documents/epic-character-storage
+cd epic-character-storage
 npm install
 npm run dev
 ```
@@ -86,7 +86,7 @@ You can publish downloadable installers directly on GitHub Releases.
 Downloads will appear in your repository's [Releases](https://github.com/Rhinehart58/Epic-Character-Storage/releases) page.
 Use `RELEASE_NOTES_TEMPLATE.md` as the standard notes/checklist for each version.
 
-### macOS "app is damaged" permanent fix
+### macOS "app is damaged" permanent fix (maintainers)
 
 Unsigned macOS builds can be blocked by Gatekeeper and shown as "damaged."  
 To stop this for released builds, configure Apple signing + notarization secrets in GitHub:
@@ -132,6 +132,26 @@ curl -fsSL "https://raw.githubusercontent.com/Rhinehart58/Epic-Character-Storage
 
 This is a workaround only; notarized/signing distribution remains the recommended path.
 
+### macOS "app is damaged" bypass (end users)
+
+If macOS shows "Tactile is damaged and can't be opened", try these in order:
+
+1. **Use in-app repair first**  
+   On the login screen, click **Repair/Reinstall**.
+2. **Use the installer workaround script**  
+   ```bash
+   curl -fsSL "https://raw.githubusercontent.com/Rhinehart58/Epic-Character-Storage/main/scripts/install-macos-workaround.sh" | bash -s -- latest
+   ```
+3. **Manual fallback (if needed)**  
+   ```bash
+   xattr -dr com.apple.quarantine "/Applications/Tactile.app"
+   open "/Applications/Tactile.app"
+   ```
+4. **If you still have old copies installed**  
+   Remove older `Tactile.app` copies from Downloads/Desktop/Applications and launch only the newest one in `/Applications`.
+
+These steps are for unsigned builds. Signed + notarized releases are the long-term fix.
+
 ### Windows publisher / firewall warning reduction
 
 To show your publisher name and reduce SmartScreen/firewall trust prompts, sign Windows installers:
@@ -160,13 +180,10 @@ This structure keeps generation logic portable so future web/embed versions can 
 Current Phase 2 collaboration is local-first (same machine/app data).  
 Next backend phase can add cloud auth, cross-device sync, and real-time multiplayer collaboration.
 
-## Dev mode login password
+## Dev mode security note
 
-Current dev-mode password is defined in `src/main/character-store.ts` as:
-
-- `epic-dev`
-
-Change this constant before shipping builds to other users.
+Do not publish dev access credentials in documentation, release notes, screenshots, or support messages.  
+Keep developer-only credentials private and rotate them before sharing builds outside your own test group.
 
 ## Confirmation email setup
 
