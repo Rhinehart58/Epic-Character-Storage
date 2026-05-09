@@ -18,18 +18,27 @@ fi
 VERSION_NO_V="${VERSION#v}"
 DMG_URL="https://github.com/${REPO}/releases/download/${VERSION}/tactile-${VERSION_NO_V}.dmg"
 DMG_PATH="${TMP_DIR}/tactile-${VERSION_NO_V}.dmg"
-MOUNT_BASE="/Volumes"
 
 echo "Downloading ${DMG_URL}"
 curl -fL "${DMG_URL}" -o "${DMG_PATH}"
 
 echo "Mounting DMG"
-hdiutil attach "${DMG_PATH}" -nobrowse -quiet
+MOUNT_POINT="$(hdiutil attach "${DMG_PATH}" -nobrowse -quiet | awk '/\/Volumes\// {print substr($0, index($0, "/Volumes/"))}' | tail -n1)"
+if [[ -z "${MOUNT_POINT}" ]]; then
+  echo "Could not mount DMG."
+  exit 1
+fi
 
-SRC_APP="$(ls -d "${MOUNT_BASE}"/*/"${APP_NAME}" 2>/dev/null | head -n1 || true)"
-if [[ -z "${SRC_APP}" ]]; then
+cleanup() {
+  if [[ -n "${MOUNT_POINT:-}" ]]; then
+    hdiutil detach "${MOUNT_POINT}" -quiet || true
+  fi
+}
+trap cleanup EXIT
+
+SRC_APP="${MOUNT_POINT}/${APP_NAME}"
+if [[ ! -d "${SRC_APP}" ]]; then
   echo "Could not find ${APP_NAME} in mounted DMG."
-  hdiutil detach "$(ls -d "${MOUNT_BASE}"/* | tail -n1)" -quiet || true
   exit 1
 fi
 
@@ -40,9 +49,9 @@ cp -R "${SRC_APP}" "/Applications/"
 echo "Removing quarantine attribute"
 xattr -dr com.apple.quarantine "/Applications/${APP_NAME}" || true
 
-MOUNT_POINT="$(dirname "${SRC_APP}")"
 echo "Unmounting ${MOUNT_POINT}"
 hdiutil detach "${MOUNT_POINT}" -quiet || true
+MOUNT_POINT=""
 
 echo "Done. Launching app."
 open "/Applications/${APP_NAME}"

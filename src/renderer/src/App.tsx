@@ -2184,6 +2184,7 @@ export default function App(): JSX.Element {
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ phase: 'idle' })
   const [lastUpdateCheckAt, setLastUpdateCheckAt] = useState<number | null>(null)
   const [manualUpdateCheckPending, setManualUpdateCheckPending] = useState(false)
+  const [manualUpdatePopup, setManualUpdatePopup] = useState<string | null>(null)
   const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null
     try {
@@ -2471,6 +2472,12 @@ export default function App(): JSX.Element {
     return () => window.clearTimeout(handle)
   }, [appMessage])
 
+  useEffect(() => {
+    if (!manualUpdatePopup) return
+    const handle = window.setTimeout(() => setManualUpdatePopup(null), 4200)
+    return () => window.clearTimeout(handle)
+  }, [manualUpdatePopup])
+
   const t = useCallback((key: UiCopyKey) => resolveUiCopy(uiCopyOverrides, key), [uiCopyOverrides])
 
   const handleBuildStampTap = useCallback(() => {
@@ -2521,13 +2528,14 @@ export default function App(): JSX.Element {
     if (!manualUpdateCheckPending) return
     if (updateStatus.phase === 'up-to-date') {
       setAuthMessage('You are up to date.')
-      setAppMessage('You are up to date.')
+      setManualUpdatePopup('You are up to date.')
       setManualUpdateCheckPending(false)
       return
     }
     if (updateStatus.phase === 'available') {
       const label = updateStatus.version ? `Update available: v${updateStatus.version}.` : 'Update available.'
       setAuthMessage(label)
+      setManualUpdatePopup(label)
       setManualUpdateCheckPending(false)
       return
     }
@@ -4866,6 +4874,22 @@ export default function App(): JSX.Element {
           minute: '2-digit'
         })}`
     : 'Not checked yet'
+  const manualUpdatePopupBanner = manualUpdatePopup ? (
+    <div className="pointer-events-auto fixed bottom-20 right-4 z-[150] flex w-[min(92vw,22rem)] items-start gap-2 rounded-lg border border-emerald-300 bg-white/95 px-3 py-2 text-sm text-emerald-900 shadow-xl backdrop-blur-sm motion-safe:animate-ecs-pop-in dark:border-emerald-500/45 dark:bg-zinc-950/95 dark:text-emerald-100">
+      <span aria-hidden className="mt-0.5 shrink-0 text-base leading-none text-emerald-600 dark:text-emerald-300">
+        ✓
+      </span>
+      <span className="min-w-0 flex-1 leading-snug">{manualUpdatePopup}</span>
+      <button
+        type="button"
+        aria-label="Dismiss update status"
+        onClick={() => setManualUpdatePopup(null)}
+        className="ecs-interactive shrink-0 rounded-md border border-zinc-300 px-1.5 py-0.5 text-[11px] font-semibold text-zinc-600 hover:bg-zinc-100 dark:border-zinc-600 dark:text-zinc-300 dark:hover:bg-zinc-800/60"
+      >
+        ×
+      </button>
+    </div>
+  ) : null
 
   if (!isAuthed) {
     const authField = cn('ecs-ui-input w-full px-3 py-2', ecsWideControlRound(colorScheme), loginAuthFieldClass)
@@ -4882,6 +4906,7 @@ export default function App(): JSX.Element {
         {installPrompt}
         {legacyInstallPrompt}
         {updateOverlay}
+        {manualUpdatePopupBanner}
         <div className="relative z-[1] px-4 py-6">
           <div className={cn('mx-auto w-full', loginShellMaxClass)}>
             {colorScheme === 'teal' ? (
@@ -5466,6 +5491,7 @@ export default function App(): JSX.Element {
       {installPrompt}
       {legacyInstallPrompt}
       {updateOverlay}
+      {manualUpdatePopupBanner}
       {syncBanner ? (
         <div
           role="status"
