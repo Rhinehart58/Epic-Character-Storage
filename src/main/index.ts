@@ -1,6 +1,8 @@
 import { app, shell, BrowserWindow, ipcMain, protocol, nativeTheme } from 'electron'
 import { join, relative, resolve } from 'path'
-import { existsSync } from 'fs'
+import { chmodSync, existsSync, writeFileSync } from 'fs'
+import { tmpdir } from 'os'
+import { spawn } from 'child_process'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import { autoUpdater } from 'electron-updater'
@@ -42,6 +44,7 @@ type UpdateStatusPayload = {
 }
 
 let updateStatus: UpdateStatusPayload = { phase: 'idle' }
+const RELEASE_REPO = 'Rhinehart58/Epic-Character-Storage'
 
 function detectLegacyInstallPaths(): string[] {
   if (process.platform !== 'darwin') return []
@@ -62,6 +65,39 @@ function publishUpdateStatus(payload: UpdateStatusPayload): void {
   for (const win of BrowserWindow.getAllWindows()) {
     win.webContents.send('app:update-status', payload)
   }
+}
+
+function createMacWorkaroundInstallScript(version: string): string {
+  const safeVersion = version.replace(/^v/i, '')
+  const tag = `v${safeVersion}`
+  const dmgUrl = `https://github.com/${RELEASE_REPO}/releases/download/${tag}/tactile-${safeVersion}.dmg`
+  const scriptPath = join(tmpdir(), `tactile-self-update-${Date.now()}.sh`)
+  const script = `#!/usr/bin/env bash
+set -euo pipefail
+APP_PATH="/Applications/Tactile.app"
+DMG_PATH="${tmpdir()}/tactile-${safeVersion}.dmg"
+URL="${dmgUrl}"
+
+while pgrep -x "Tactile" >/dev/null 2>&1; do
+  sleep 1
+done
+
+curl -fL "$URL" -o "$DMG_PATH"
+MOUNT="$(hdiutil attach "$DMG_PATH" -nobrowse | awk '/\\/Volumes\\//{print substr($0,index($0,"/Volumes/"))}' | tail -n1)"
+[ -n "$MOUNT" ] || exit 1
+APP_SRC="$MOUNT/Tactile.app"
+[ -d "$APP_SRC" ] || APP_SRC="$(ls -d "$MOUNT"/*.app 2>/dev/null | head -n1)"
+[ -n "$APP_SRC" ] || exit 1
+
+rm -rf "$APP_PATH"
+ditto "$APP_SRC" "$APP_PATH"
+xattr -dr com.apple.quarantine "$APP_PATH" || true
+hdiutil detach "$MOUNT" || true
+open "$APP_PATH"
+`
+  writeFileSync(scriptPath, script, 'utf8')
+  chmodSync(scriptPath, 0o755)
+  return scriptPath
 }
 
 function setupAutoUpdater(): void {
@@ -302,6 +338,17 @@ ipcMain.handle('app:updateInstall', async () => {
   }
   publishUpdateStatus({ phase: 'installing', version: updateStatus.version, message: 'Installing update and restarting...' })
   try {
+    if (process.platform === 'darwin') {
+      const version = updateStatus.version ?? ''
+      if (!/^\d+\.\d+\.\d+/.test(version)) {
+        return { ok: false as const, message: 'Could not resolve update version for install.' }
+      }
+      const scriptPath = createMacWorkaroundInstallScript(version)
+      const child = spawn('bash', [scriptPath], { detached: true, stdio: 'ignore' })
+      child.unref()
+      setTimeout(() => app.quit(), 150)
+      return { ok: true as const }
+    }
     setTimeout(() => autoUpdater.quitAndInstall(false, true), 200)
     return { ok: true as const }
   } catch (error) {
