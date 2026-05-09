@@ -1,6 +1,12 @@
 {
-  "updatedAt": "2026-05-09T20:20:00.000Z",
+  "updatedAt": "2026-05-09T20:22:00.000Z",
   "entries": [
+    {
+      "id": "ecs-2026-05-09-v1-0-26-tutorial-readability-release",
+      "date": "2026-05-09",
+      "title": "v1.0.26: tutorial readability and expanded feature highlights",
+      "details": "Release packages the improved tutorial legibility pass with stronger contrast, richer per-step context, and broader spotlight coverage of key workflows like quick-create and attack generation."
+    },
     {
       "id": "ecs-2026-05-09-tutorial-readability-and-feature-coverage-pass",
       "date": "2026-05-09",
