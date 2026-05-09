@@ -2187,6 +2187,7 @@ export default function App(): JSX.Element {
   const [devCommandQuery, setDevCommandQuery] = useState('')
   const [appVersion, setAppVersion] = useState<string | null>(null)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ phase: 'idle' })
+  const [installingProgress, setInstallingProgress] = useState(8)
   const [lastUpdateCheckAt, setLastUpdateCheckAt] = useState<number | null>(null)
   const [manualUpdateCheckPending, setManualUpdateCheckPending] = useState(false)
   const [manualUpdatePopup, setManualUpdatePopup] = useState<string | null>(null)
@@ -2291,6 +2292,8 @@ export default function App(): JSX.Element {
   const [factionFilter, setFactionFilter] = useState<string>('all')
   const [appMessage, setAppMessage] = useState<string | null>(null)
   const [guidedSetup, setGuidedSetup] = useState(true)
+  const [tutorialOpen, setTutorialOpen] = useState(false)
+  const [tutorialStep, setTutorialStep] = useState(0)
   const [compactCreator, setCompactCreator] = useState(true)
   const [compactBattle, setCompactBattle] = useState(true)
   const [rulesMode, setRulesMode] = useState<RulesMode>('ttrpg')
@@ -2571,6 +2574,21 @@ export default function App(): JSX.Element {
 
   useEffect(() => {
     if (updateStatus.phase === 'checking') setLastUpdateCheckAt(Date.now())
+  }, [updateStatus.phase])
+
+  useEffect(() => {
+    if (updateStatus.phase !== 'installing') {
+      setInstallingProgress(8)
+      return
+    }
+    setInstallingProgress(18)
+    const intervalId = window.setInterval(() => {
+      setInstallingProgress((prev) => {
+        const next = prev + (prev < 60 ? 6 : prev < 80 ? 3 : 1.2)
+        return Math.min(92, next)
+      })
+    }, 260)
+    return () => window.clearInterval(intervalId)
   }, [updateStatus.phase])
 
   useEffect(() => {
@@ -3232,6 +3250,8 @@ export default function App(): JSX.Element {
   async function handleLogout(message?: string): Promise<void> {
     await backend.authApi.logout()
     setIsAuthed(false)
+    setTutorialOpen(false)
+    setTutorialStep(0)
     setAuthPassword('')
     setNewResetPassword('')
     setResetToken('')
@@ -3297,6 +3317,9 @@ export default function App(): JSX.Element {
       setActiveAccountId(result.account.id)
       setActiveAccountEmail(result.account.email)
       setWorkspaceTab('home')
+      setGuidedSetup(true)
+      setTutorialStep(0)
+      setTutorialOpen(true)
       return
     }
 
@@ -4925,7 +4948,15 @@ export default function App(): JSX.Element {
             <p className="mt-2 text-center text-xs font-medium text-cyan-200">{downloadProgress}% complete</p>
           </div>
         ) : updateStatus.phase === 'installing' ? (
-          <p className="mt-4 text-center text-xs font-medium text-cyan-200">This app will close and relaunch automatically.</p>
+          <div className="mt-5">
+            <div className="h-2 overflow-hidden rounded-full bg-slate-700">
+              <div className="h-full bg-cyan-400 transition-all duration-200" style={{ width: `${installingProgress}%` }} />
+            </div>
+            <p className="mt-2 text-center text-xs font-medium text-cyan-200">
+              Finalizing install... {Math.round(installingProgress)}%
+            </p>
+            <p className="mt-1 text-center text-[11px] text-slate-300">This app will close and relaunch automatically.</p>
+          </div>
         ) : null}
       </div>
     </div>
@@ -4998,8 +5029,38 @@ export default function App(): JSX.Element {
     Boolean(appVersion && updateStatus.version) && appVersion?.trim() === updateStatus.version?.trim()
   const showUpdaterFailureFallback = updateStatus.phase === 'error'
   const showLoginUpdateDot = !isAuthed && updateStatus.phase === 'available'
+  const tutorialSteps: ReadonlyArray<{ title: string; body: string }> = [
+    {
+      title: 'Welcome to Tactile',
+      body: 'This quick tour highlights the core flow so you can jump in fast. You can rerun it anytime from Settings -> Help & guidance.'
+    },
+    {
+      title: '1) Start in Home',
+      body: 'Use Home to create or join campaigns. Campaign codes let players on this device join the same workspace quickly.'
+    },
+    {
+      title: '2) Build characters',
+      body: 'Use the character editor to set stats, attacks, and notes. The attack generator can create themed moves from keywords.'
+    },
+    {
+      title: '3) Run encounters',
+      body: 'Open Battle to track HP, initiative, round flow, and active turns. Sheet and Battle tabs let you switch views quickly.'
+    },
+    {
+      title: '4) Make it yours',
+      body: 'Use Theme and Settings to tune layout, spacing, and helper text. If you forget anything, rerun this tutorial anytime.'
+    }
+  ]
+  const tutorialStepIndex = Math.max(0, Math.min(tutorialStep, tutorialSteps.length - 1))
+  const tutorialStepRow = tutorialSteps[tutorialStepIndex]
+  const isTutorialFinalStep = tutorialStepIndex >= tutorialSteps.length - 1
   const manualUpdatePopupBanner = manualUpdatePopup ? (
-    <div className="pointer-events-auto fixed bottom-20 right-4 z-[150] flex w-[min(92vw,22rem)] items-start gap-2 rounded-lg border border-emerald-300 bg-white/95 px-3 py-2 text-sm text-emerald-900 shadow-xl backdrop-blur-sm motion-safe:animate-ecs-pop-in dark:border-emerald-500/45 dark:bg-zinc-950/95 dark:text-emerald-100">
+    <div
+      className={cn(
+        'pointer-events-auto fixed left-1/2 z-[150] flex w-[min(94vw,42rem)] -translate-x-1/2 items-start gap-2 rounded-xl border border-emerald-300 bg-white/95 px-3 py-2.5 text-sm text-emerald-900 shadow-xl backdrop-blur-sm motion-safe:animate-ecs-pop-in dark:border-emerald-500/45 dark:bg-zinc-950/95 dark:text-emerald-100',
+        hasTopBanner ? 'top-[7.5rem]' : 'top-3'
+      )}
+    >
       <span aria-hidden className="mt-0.5 shrink-0 text-base leading-none text-emerald-600 dark:text-emerald-300">
         ✓
       </span>
@@ -7952,6 +8013,69 @@ export default function App(): JSX.Element {
         </DevToolsPanel>
       </div>
 
+      {tutorialOpen
+        ? createPortal(
+            <>
+              <button
+                type="button"
+                aria-label="Close tutorial"
+                className="fixed inset-0 z-[52000] cursor-default bg-slate-950/45 motion-safe:animate-ecs-backdrop-in"
+                onClick={() => setTutorialOpen(false)}
+              />
+              <div
+                role="dialog"
+                aria-label="Tactile tutorial"
+                className="fixed left-1/2 top-1/2 z-[52001] w-[min(94vw,38rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-300/80 bg-white/96 p-4 shadow-2xl backdrop-blur-sm dark:border-slate-700/80 dark:bg-slate-950/96"
+              >
+                <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
+                  Tutorial • Step {tutorialStepIndex + 1} of {tutorialSteps.length}
+                </p>
+                <h3 className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">{tutorialStepRow.title}</h3>
+                <p className="mt-2 text-sm leading-relaxed text-slate-700 dark:text-slate-200">{tutorialStepRow.body}</p>
+                <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
+                  <div
+                    className="h-full bg-sky-500 transition-all dark:bg-sky-400"
+                    style={{ width: `${((tutorialStepIndex + 1) / tutorialSteps.length) * 100}%` }}
+                  />
+                </div>
+                <div className="mt-4 flex items-center justify-between gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setTutorialOpen(false)}
+                    className="ecs-interactive rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800/60"
+                  >
+                    Skip
+                  </button>
+                  <div className="ml-auto flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setTutorialStep((step) => Math.max(0, step - 1))}
+                      disabled={tutorialStepIndex === 0}
+                      className="ecs-interactive rounded-md border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-45 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800/60"
+                    >
+                      Back
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (isTutorialFinalStep) {
+                          setTutorialOpen(false)
+                          return
+                        }
+                        setTutorialStep((step) => Math.min(tutorialSteps.length - 1, step + 1))
+                      }}
+                      className="ecs-interactive rounded-md border border-sky-300 bg-sky-500 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-sky-600 dark:border-sky-500/55 dark:bg-sky-600 dark:hover:bg-sky-500"
+                    >
+                      {isTutorialFinalStep ? 'Finish' : 'Next'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </>,
+            document.body
+          )
+        : null}
+
       {showThemeMenu && themeMenuPos
         ? createPortal(
             <>
@@ -8573,6 +8697,19 @@ export default function App(): JSX.Element {
                         <option value="4500">Extended — 4.5s</option>
                       </select>
                     </SettingsField>
+                    <div className="mt-1.5">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowSettingsMenu(false)
+                          setTutorialStep(0)
+                          setTutorialOpen(true)
+                        }}
+                        className="ecs-interactive rounded-md border border-sky-300 bg-sky-500 px-2.5 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-white hover:bg-sky-600 dark:border-sky-500/55 dark:bg-sky-600 dark:hover:bg-sky-500"
+                      >
+                        Rerun tutorial
+                      </button>
+                    </div>
                   </SettingsSection>
                 </div>
 

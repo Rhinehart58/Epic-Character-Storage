@@ -1,6 +1,12 @@
 {
-  "updatedAt": "2026-05-09T19:08:00.000Z",
+  "updatedAt": "2026-05-09T19:42:00.000Z",
   "entries": [
+    {
+      "id": "ecs-2026-05-09-tutorial-onboarding-and-installing-progress-ui",
+      "date": "2026-05-09",
+      "title": "Added post-signup tutorial mode + install/restart progress feedback",
+      "details": "New accounts now launch a guided tutorial modal right after registration, Settings now includes a rerun tutorial button for refreshers, and updater install overlay now shows a finalizing progress bar/percent before restart. Manual update popup was moved to a centered top banner to improve responsiveness on smaller windows."
+    },
     {
       "id": "ecs-2026-05-09-v1-0-23-readme-security-and-install-guidance",
       "date": "2026-05-09",
