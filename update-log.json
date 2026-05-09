@@ -1,6 +1,12 @@
 {
-  "updatedAt": "2026-05-09T19:45:00.000Z",
+  "updatedAt": "2026-05-09T20:08:00.000Z",
   "entries": [
+    {
+      "id": "ecs-2026-05-09-v1-0-25-spotlight-tutorial-pass",
+      "date": "2026-05-09",
+      "title": "v1.0.25: spotlight tutorial flow and easier tutorial access",
+      "details": "Tutorial now highlights real UI targets step-by-step (tabs, sidebar, rules toggle, theme, settings) with a focused spotlight overlay and anchored guidance card. Added a prominent header Tutorial button so users can relaunch onboarding anytime."
+    },
     {
       "id": "ecs-2026-05-09-v1-0-24-onboarding-and-update-ux-release",
       "date": "2026-05-09",

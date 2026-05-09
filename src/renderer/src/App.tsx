@@ -2294,6 +2294,12 @@ export default function App(): JSX.Element {
   const [guidedSetup, setGuidedSetup] = useState(true)
   const [tutorialOpen, setTutorialOpen] = useState(false)
   const [tutorialStep, setTutorialStep] = useState(0)
+  const [tutorialTargetRect, setTutorialTargetRect] = useState<{
+    top: number
+    left: number
+    width: number
+    height: number
+  } | null>(null)
   const [compactCreator, setCompactCreator] = useState(true)
   const [compactBattle, setCompactBattle] = useState(true)
   const [rulesMode, setRulesMode] = useState<RulesMode>('ttrpg')
@@ -2575,6 +2581,60 @@ export default function App(): JSX.Element {
   useEffect(() => {
     if (updateStatus.phase === 'checking') setLastUpdateCheckAt(Date.now())
   }, [updateStatus.phase])
+
+  const tutorialSteps: ReadonlyArray<{ title: string; body: string; selector: string }> = [
+    {
+      title: 'Workspace tabs',
+      body: 'These tabs switch your primary workflow: Home for campaign setup, Sheet for editing, and Battle for encounter tracking.',
+      selector: '[data-tutorial="workspace-tabs"]'
+    },
+    {
+      title: 'Campaign sidebar',
+      body: 'This panel is your campaign command center. Create or join campaigns here, then manage shared context from one place.',
+      selector: '[data-tutorial="campaign-sidebar"]'
+    },
+    {
+      title: 'Rules mode toggle',
+      body: 'Switch between TTRPG and DnD sheet behavior at any time without restarting.',
+      selector: '[data-tutorial="rules-toggle"]'
+    },
+    {
+      title: 'Theme controls',
+      body: 'Open Theme to adjust color scheme, tone, layout style, and spacing presets.',
+      selector: '[data-tutorial="theme-button"]'
+    },
+    {
+      title: 'Settings and refresher',
+      body: 'Open Settings for guidance options. You can rerun this tutorial anytime with the Tutorial button in this header.',
+      selector: '[data-tutorial="settings-button"]'
+    }
+  ]
+  const tutorialStepIndex = Math.max(0, Math.min(tutorialStep, tutorialSteps.length - 1))
+  const tutorialStepRow = tutorialSteps[tutorialStepIndex]
+  const isTutorialFinalStep = tutorialStepIndex >= tutorialSteps.length - 1
+
+  useLayoutEffect(() => {
+    if (!tutorialOpen || !isAuthed) {
+      setTutorialTargetRect(null)
+      return
+    }
+    const updateTarget = (): void => {
+      const target = document.querySelector(tutorialStepRow.selector)
+      if (!(target instanceof HTMLElement)) {
+        setTutorialTargetRect(null)
+        return
+      }
+      const rect = target.getBoundingClientRect()
+      setTutorialTargetRect({ top: rect.top, left: rect.left, width: rect.width, height: rect.height })
+    }
+    updateTarget()
+    window.addEventListener('resize', updateTarget)
+    window.addEventListener('scroll', updateTarget, true)
+    return () => {
+      window.removeEventListener('resize', updateTarget)
+      window.removeEventListener('scroll', updateTarget, true)
+    }
+  }, [isAuthed, tutorialOpen, tutorialStepRow.selector, workspaceTab, showThemeMenu, showSettingsMenu])
 
   useEffect(() => {
     if (updateStatus.phase !== 'installing') {
@@ -5029,31 +5089,6 @@ export default function App(): JSX.Element {
     Boolean(appVersion && updateStatus.version) && appVersion?.trim() === updateStatus.version?.trim()
   const showUpdaterFailureFallback = updateStatus.phase === 'error'
   const showLoginUpdateDot = !isAuthed && updateStatus.phase === 'available'
-  const tutorialSteps: ReadonlyArray<{ title: string; body: string }> = [
-    {
-      title: 'Welcome to Tactile',
-      body: 'This quick tour highlights the core flow so you can jump in fast. You can rerun it anytime from Settings -> Help & guidance.'
-    },
-    {
-      title: '1) Start in Home',
-      body: 'Use Home to create or join campaigns. Campaign codes let players on this device join the same workspace quickly.'
-    },
-    {
-      title: '2) Build characters',
-      body: 'Use the character editor to set stats, attacks, and notes. The attack generator can create themed moves from keywords.'
-    },
-    {
-      title: '3) Run encounters',
-      body: 'Open Battle to track HP, initiative, round flow, and active turns. Sheet and Battle tabs let you switch views quickly.'
-    },
-    {
-      title: '4) Make it yours',
-      body: 'Use Theme and Settings to tune layout, spacing, and helper text. If you forget anything, rerun this tutorial anytime.'
-    }
-  ]
-  const tutorialStepIndex = Math.max(0, Math.min(tutorialStep, tutorialSteps.length - 1))
-  const tutorialStepRow = tutorialSteps[tutorialStepIndex]
-  const isTutorialFinalStep = tutorialStepIndex >= tutorialSteps.length - 1
   const manualUpdatePopupBanner = manualUpdatePopup ? (
     <div
       className={cn(
@@ -6130,6 +6165,7 @@ export default function App(): JSX.Element {
                 className="inline-flex overflow-hidden rounded-lg border border-slate-300 text-xs font-semibold dark:border-slate-600"
                 role="group"
                 aria-label="Character sheet rules mode"
+                data-tutorial="rules-toggle"
               >
                 <button
                   type="button"
@@ -6200,6 +6236,7 @@ export default function App(): JSX.Element {
                 aria-expanded={showThemeMenu}
                 title="Themes, layout, and appearance"
                 className="ecs-interactive ecs-toolbar-btn ecs-ui-btn ecs-ui-btn-quiet inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 active:brightness-95 dark:border-slate-700 dark:hover:bg-slate-800/70"
+                data-tutorial="theme-button"
               >
                 <span aria-hidden className="text-sm leading-none">
                   ◐
@@ -6217,9 +6254,25 @@ export default function App(): JSX.Element {
                 aria-expanded={showSettingsMenu}
                 title="Open workspace settings"
                 className="ecs-interactive ecs-toolbar-btn ecs-ui-btn ecs-ui-btn-quiet inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 active:brightness-95 dark:border-slate-700 dark:hover:bg-slate-800/70"
+                data-tutorial="settings-button"
               >
                 <span aria-hidden className="text-sm leading-none">⚙</span>
                 <span>Settings</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowThemeMenu(false)
+                  setShowSettingsMenu(false)
+                  setTutorialStep(0)
+                  setTutorialOpen(true)
+                }}
+                title="Open guided tutorial walkthrough"
+                className="ecs-interactive ecs-toolbar-btn inline-flex items-center gap-1.5 rounded-lg border border-sky-300 bg-sky-500 px-3 py-1.5 text-xs font-semibold uppercase tracking-wide text-white hover:bg-sky-600 active:brightness-95 dark:border-sky-500/55 dark:bg-sky-600 dark:hover:bg-sky-500"
+                data-tutorial="tutorial-button"
+              >
+                <span aria-hidden className="text-sm leading-none">✦</span>
+                <span>Tutorial</span>
               </button>
               <span aria-hidden className="hidden h-5 w-px bg-slate-300/70 sm:inline-block dark:bg-slate-700/70" />
               <button
@@ -6335,6 +6388,7 @@ export default function App(): JSX.Element {
               'ecs-sidebar-shell ecs-signature-panel min-w-0 p-4 shadow-sm lg:sticky lg:top-5 lg:h-fit',
               cardClass
             )}
+            data-tutorial="campaign-sidebar"
           >
             <div className="flex items-baseline justify-between gap-2">
               <h2 className="ecs-ui-section-title">{t('sidebar.charactersHeading')}</h2>
@@ -6652,7 +6706,7 @@ export default function App(): JSX.Element {
               )}
             >
               <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                <div role="tablist" aria-label="Workspace view" className="flex flex-wrap gap-2">
+                <div role="tablist" aria-label="Workspace view" className="flex flex-wrap gap-2" data-tutorial="workspace-tabs">
                   <button
                     type="button"
                     role="tab"
@@ -8016,22 +8070,53 @@ export default function App(): JSX.Element {
       {tutorialOpen
         ? createPortal(
             <>
-              <button
-                type="button"
-                aria-label="Close tutorial"
-                className="fixed inset-0 z-[52000] cursor-default bg-slate-950/45 motion-safe:animate-ecs-backdrop-in"
-                onClick={() => setTutorialOpen(false)}
-              />
+              <div className="fixed inset-0 z-[52000] bg-slate-950/48 motion-safe:animate-ecs-backdrop-in" />
+              {tutorialTargetRect ? (
+                <div
+                  aria-hidden
+                  className="pointer-events-none fixed z-[52001] rounded-xl border-2 border-sky-400 shadow-[0_0_0_9999px_rgba(2,6,23,0.58)] transition-all duration-200"
+                  style={{
+                    top: Math.max(6, tutorialTargetRect.top - 8),
+                    left: Math.max(6, tutorialTargetRect.left - 8),
+                    width: Math.max(20, tutorialTargetRect.width + 16),
+                    height: Math.max(20, tutorialTargetRect.height + 16)
+                  }}
+                />
+              ) : null}
               <div
                 role="dialog"
                 aria-label="Tactile tutorial"
-                className="fixed left-1/2 top-1/2 z-[52001] w-[min(94vw,38rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl border border-slate-300/80 bg-white/96 p-4 shadow-2xl backdrop-blur-sm dark:border-slate-700/80 dark:bg-slate-950/96"
+                className="fixed z-[52002] rounded-2xl border border-slate-300/80 bg-white/96 p-4 shadow-2xl backdrop-blur-sm dark:border-slate-700/80 dark:bg-slate-950/96"
+                style={(() => {
+                  const viewportW = typeof window !== 'undefined' ? window.innerWidth : 1200
+                  const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800
+                  const width = Math.min(560, Math.max(300, viewportW - 24))
+                  if (!tutorialTargetRect) {
+                    return {
+                      width,
+                      left: Math.max(12, (viewportW - width) / 2),
+                      top: Math.max(12, (viewportH - 260) / 2)
+                    }
+                  }
+                  const preferredTop = tutorialTargetRect.top + tutorialTargetRect.height + 16
+                  const fallbackTop = tutorialTargetRect.top - 230
+                  const top =
+                    preferredTop + 250 > viewportH ? Math.max(12, fallbackTop) : Math.min(viewportH - 250, preferredTop)
+                  const centeredLeft = tutorialTargetRect.left + tutorialTargetRect.width / 2 - width / 2
+                  const left = Math.min(viewportW - width - 12, Math.max(12, centeredLeft))
+                  return { width, left, top }
+                })()}
               >
                 <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                   Tutorial • Step {tutorialStepIndex + 1} of {tutorialSteps.length}
                 </p>
                 <h3 className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">{tutorialStepRow.title}</h3>
                 <p className="mt-2 text-sm leading-relaxed text-slate-700 dark:text-slate-200">{tutorialStepRow.body}</p>
+                {!tutorialTargetRect ? (
+                  <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
+                    This feature is currently off-screen. Resize or scroll, then continue.
+                  </p>
+                ) : null}
                 <div className="mt-4 h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-slate-800">
                   <div
                     className="h-full bg-sky-500 transition-all dark:bg-sky-400"
