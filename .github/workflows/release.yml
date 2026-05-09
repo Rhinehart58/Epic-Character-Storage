@@ -52,6 +52,7 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
           WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
           WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+          ALLOW_UNSIGNED_MAC_RELEASE: ${{ secrets.ALLOW_UNSIGNED_MAC_RELEASE }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
@@ -64,8 +65,12 @@ jobs:
             if [[ -n "${APPLE_ID}" && -n "${APPLE_APP_SPECIFIC_PASSWORD}" && -n "${APPLE_TEAM_ID}" && -n "${CSC_LINK}" && -n "${CSC_KEY_PASSWORD}" ]]; then
               echo "Building signed/notarized macOS release..."
               npx electron-builder --mac dmg zip --publish never
+            elif [[ "${ALLOW_UNSIGNED_MAC_RELEASE}" == "true" ]]; then
+              echo "::warning::Building unsigned macOS artifact (ALLOW_UNSIGNED_MAC_RELEASE=true). App may be flagged by Gatekeeper."
+              npx electron-builder --mac dmg zip --publish never --config.mac.identity=null
             else
               echo "::error::Missing required macOS signing/notarization secrets (APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID, CSC_LINK, CSC_KEY_PASSWORD)."
+              echo "::error::To allow unsigned fallback temporarily, set repository secret ALLOW_UNSIGNED_MAC_RELEASE=true."
               exit 1
             fi
           elif [[ "${{ matrix.os }}" == "windows-latest" ]]; then

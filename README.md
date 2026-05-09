@@ -110,6 +110,12 @@ Required repository secrets for signed/notarized macOS releases:
 - `APPLE_TEAM_ID`
 - Optional alternative auth: `APPLE_API_KEY`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`
 
+If you need to ship unsigned builds temporarily, set:
+
+- `ALLOW_UNSIGNED_MAC_RELEASE=true`
+
+This enables fallback unsigned mac artifacts in CI. Keep in mind users may still see Gatekeeper trust warnings.
+
 ### macOS no-paid-account workaround
 
 If you are distributing unsigned builds, users can install with a workaround script that copies the app and clears quarantine:
