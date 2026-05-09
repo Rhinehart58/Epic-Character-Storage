@@ -1,6 +1,12 @@
 {
-  "updatedAt": "2026-05-09T19:42:00.000Z",
+  "updatedAt": "2026-05-09T19:45:00.000Z",
   "entries": [
+    {
+      "id": "ecs-2026-05-09-v1-0-24-onboarding-and-update-ux-release",
+      "date": "2026-05-09",
+      "title": "v1.0.24: onboarding tutorial + updater UX improvements",
+      "details": "Ships auto-start tutorial after sign-up with a rerun option in Settings, plus a clearer update experience with centered status toasts and a visible finalizing progress bar during restart/install."
+    },
     {
       "id": "ecs-2026-05-09-tutorial-onboarding-and-installing-progress-ui",
       "date": "2026-05-09",
