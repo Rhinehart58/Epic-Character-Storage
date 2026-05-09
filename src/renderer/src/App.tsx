@@ -91,7 +91,7 @@ const LEGACY_INSTALL_PROMPT_DISMISSED_KEY = 'ecs_legacy_install_prompt_dismissed
 const STARTUP_SPLASH_DURATION_KEY = 'ecs_startup_splash_ms_v1'
 const UPDATE_CHECK_MS = 15 * 60 * 1000
 
-type UpdateStatusPhase = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'
+type UpdateStatusPhase = 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'up-to-date' | 'error'
 type UpdateStatus = {
   phase: UpdateStatusPhase
   version?: string
@@ -2183,6 +2183,7 @@ export default function App(): JSX.Element {
   const [appVersion, setAppVersion] = useState<string | null>(null)
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus>({ phase: 'idle' })
   const [lastUpdateCheckAt, setLastUpdateCheckAt] = useState<number | null>(null)
+  const [manualUpdateCheckPending, setManualUpdateCheckPending] = useState(false)
   const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null
     try {
@@ -2515,6 +2516,26 @@ export default function App(): JSX.Element {
   useEffect(() => {
     if (updateStatus.phase === 'checking') setLastUpdateCheckAt(Date.now())
   }, [updateStatus.phase])
+
+  useEffect(() => {
+    if (!manualUpdateCheckPending) return
+    if (updateStatus.phase === 'up-to-date') {
+      setAuthMessage('You are up to date.')
+      setAppMessage('You are up to date.')
+      setManualUpdateCheckPending(false)
+      return
+    }
+    if (updateStatus.phase === 'available') {
+      const label = updateStatus.version ? `Update available: v${updateStatus.version}.` : 'Update available.'
+      setAuthMessage(label)
+      setManualUpdateCheckPending(false)
+      return
+    }
+    if (updateStatus.phase === 'error') {
+      if (updateStatus.message) setAuthMessage(updateStatus.message)
+      setManualUpdateCheckPending(false)
+    }
+  }, [manualUpdateCheckPending, updateStatus])
 
   useEffect(() => {
     if (!legacyInstallApiAvailable) return
@@ -4692,6 +4713,7 @@ export default function App(): JSX.Element {
     if (!updaterApiAvailable) return
     const result = await backend.appApi.updateInstall().catch(() => ({ ok: false as const, message: 'Install failed.' }))
     if (!result.ok) setAppMessage(result.message ?? 'Install failed.')
+    else setAppMessage('Installing update and restarting...')
   }, [updaterApiAvailable])
   const handleRevealLegacyInstall = useCallback(async (): Promise<void> => {
     if (!legacyInstallApiAvailable) return
@@ -4705,11 +4727,15 @@ export default function App(): JSX.Element {
       setAuthMessage('Update checks are available in packaged desktop builds.')
       return
     }
+    setManualUpdateCheckPending(true)
     setLastUpdateCheckAt(Date.now())
     const result: { ok: boolean; message?: string } = await backend.appApi
       .updateCheck()
       .catch(() => ({ ok: false, message: 'Unable to check for updates.' }))
-    if (!result.ok && result.message) setAuthMessage(result.message)
+    if (!result.ok && result.message) {
+      setAuthMessage(result.message)
+      setManualUpdateCheckPending(false)
+    }
     else if (result.ok) setAuthMessage('Checking for updates...')
   }, [updaterApiAvailable])
   const updatePrompt = shouldShowUpdatePrompt ? (
@@ -4749,7 +4775,8 @@ export default function App(): JSX.Element {
       </div>
     </div>
   ) : null
-  const showUpdateOverlay = updateStatus.phase === 'checking' || updateStatus.phase === 'downloading'
+  const showUpdateOverlay =
+    updateStatus.phase === 'checking' || updateStatus.phase === 'downloading' || updateStatus.phase === 'installing'
   const updateOverlay = showUpdateOverlay ? (
     <div className="fixed inset-0 z-[70000] flex items-center justify-center bg-slate-950/82 px-4 backdrop-blur-md">
       <div className="w-full max-w-md rounded-2xl border border-slate-700/80 bg-slate-900/92 p-6 text-slate-50 shadow-2xl">
@@ -4757,7 +4784,11 @@ export default function App(): JSX.Element {
           <EcsLogoMark className="h-10 w-10 motion-safe:animate-[spin_2.2s_linear_infinite]" />
         </div>
         <h3 className="mt-4 text-center text-xl font-semibold">
-          {updateStatus.phase === 'checking' ? 'Checking for update...' : 'Downloading update...'}
+          {updateStatus.phase === 'checking'
+            ? 'Checking for update...'
+            : updateStatus.phase === 'downloading'
+              ? 'Downloading update...'
+              : 'Installing update...'}
         </h3>
         <p className="mt-2 text-center text-sm text-slate-300">{updateStatus.message ?? 'Preparing updater...'}</p>
         {updateStatus.phase === 'downloading' ? (
@@ -4767,6 +4798,8 @@ export default function App(): JSX.Element {
             </div>
             <p className="mt-2 text-center text-xs font-medium text-cyan-200">{downloadProgress}% complete</p>
           </div>
+        ) : updateStatus.phase === 'installing' ? (
+          <p className="mt-4 text-center text-xs font-medium text-cyan-200">This app will close and relaunch automatically.</p>
         ) : null}
       </div>
     </div>

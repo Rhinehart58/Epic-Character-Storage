@@ -100,6 +100,22 @@ To stop this for released builds, configure Apple signing + notarization secrets
 The release workflow will automatically notarize macOS artifacts when these secrets are present.
 If they are missing, it falls back to an unsigned build and prints a warning in Actions.
 
+### macOS no-paid-account workaround
+
+If you are distributing unsigned builds, users can install with a workaround script that copies the app and clears quarantine:
+
+```bash
+curl -fsSL "https://raw.githubusercontent.com/Rhinehart58/Epic-Character-Storage/main/scripts/install-macos-workaround.sh" | bash -s -- latest
+```
+
+You can also pass a specific tag:
+
+```bash
+curl -fsSL "https://raw.githubusercontent.com/Rhinehart58/Epic-Character-Storage/main/scripts/install-macos-workaround.sh" | bash -s -- v1.0.13
+```
+
+This is a workaround only; notarized/signing distribution remains the recommended path.
+
 ## Architecture notes
 
 - `src/shared/character-types.ts`: core app domain model.

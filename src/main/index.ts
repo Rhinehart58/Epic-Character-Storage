@@ -35,7 +35,7 @@ import { deletePortraitIfExists, pickAndStorePortrait, portraitsRoot } from './p
 import { getPrefs, setPrefs } from './app-prefs'
 
 type UpdateStatusPayload = {
-  phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'
+  phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'up-to-date' | 'error'
   version?: string
   progress?: number
   message?: string
@@ -66,7 +66,8 @@ function publishUpdateStatus(payload: UpdateStatusPayload): void {
 
 function setupAutoUpdater(): void {
   autoUpdater.autoDownload = false
-  autoUpdater.autoInstallOnAppQuit = true
+  // Avoid surprise restarts on Windows when users simply close the app.
+  autoUpdater.autoInstallOnAppQuit = false
 
   autoUpdater.on('checking-for-update', () => {
     publishUpdateStatus({ phase: 'checking', message: 'Checking for updates...' })
@@ -296,8 +297,18 @@ ipcMain.handle('app:updateInstall', async () => {
     publishUpdateStatus({ phase: 'error', message: 'Updater works in packaged builds only.' })
     return { ok: false as const, message: 'Updater works in packaged builds only.' }
   }
-  setImmediate(() => autoUpdater.quitAndInstall())
-  return { ok: true as const }
+  if (updateStatus.phase !== 'downloaded') {
+    return { ok: false as const, message: 'Update is not downloaded yet.' }
+  }
+  publishUpdateStatus({ phase: 'installing', version: updateStatus.version, message: 'Installing update and restarting...' })
+  try {
+    setTimeout(() => autoUpdater.quitAndInstall(false, true), 200)
+    return { ok: true as const }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to install update.'
+    publishUpdateStatus({ phase: 'error', message })
+    return { ok: false as const, message }
+  }
 })
 ipcMain.handle('app:getLegacyInstalls', async () => ({ paths: detectLegacyInstallPaths() }))
 ipcMain.handle('app:openPath', async (_event, path: string) => {

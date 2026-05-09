@@ -85,7 +85,7 @@ declare global {
       getPrefs: (keys: string[]) => Promise<Record<string, string | null>>
       setPrefs: (entries: Record<string, string | null>) => Promise<{ ok: true }>
       updateStatus: () => Promise<{
-        phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'
+        phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'up-to-date' | 'error'
         version?: string
         progress?: number
         message?: string
@@ -96,7 +96,7 @@ declare global {
       getLegacyInstalls: () => Promise<{ paths: string[] }>
       openPath: (path: string) => Promise<{ ok: boolean; message?: string }>
       onUpdateStatus: (callback: (payload: {
-        phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'
+        phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'up-to-date' | 'error'
         version?: string
         progress?: number
         message?: string

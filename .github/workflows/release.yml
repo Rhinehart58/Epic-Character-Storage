@@ -83,6 +83,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
       - name: Download all build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -100,3 +103,4 @@ jobs:
             release-assets/**/*.yml
             release-assets/**/*.yaml
             release-assets/**/*.blockmap
+            scripts/install-macos-workaround.sh

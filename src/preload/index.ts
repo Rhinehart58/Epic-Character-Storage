@@ -104,7 +104,7 @@ const appApi = {
   setPrefs: (entries: Record<string, string | null>): Promise<{ ok: true }> =>
     ipcRenderer.invoke('app:setPrefs', entries),
   updateStatus: (): Promise<{
-    phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'
+    phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'installing' | 'up-to-date' | 'error'
     version?: string
     progress?: number
     message?: string
@@ -117,6 +117,7 @@ const appApi = {
   onUpdateStatus: (
     callback: (payload: {
       phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'
+      | 'installing'
       version?: string
       progress?: number
       message?: string
@@ -125,7 +126,15 @@ const appApi = {
     const listener = (
       _event: unknown,
       payload: {
-        phase: 'idle' | 'checking' | 'available' | 'downloading' | 'downloaded' | 'up-to-date' | 'error'
+        phase:
+          | 'idle'
+          | 'checking'
+          | 'available'
+          | 'downloading'
+          | 'downloaded'
+          | 'installing'
+          | 'up-to-date'
+          | 'error'
         version?: string
         progress?: number
         message?: string
