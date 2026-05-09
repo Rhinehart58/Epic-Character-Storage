@@ -1,6 +1,12 @@
 {
-  "updatedAt": "2026-05-09T20:08:00.000Z",
+  "updatedAt": "2026-05-09T20:20:00.000Z",
   "entries": [
+    {
+      "id": "ecs-2026-05-09-tutorial-readability-and-feature-coverage-pass",
+      "date": "2026-05-09",
+      "title": "Improved tutorial readability and expanded guided feature tour",
+      "details": "Tutorial copy now uses clearer high-contrast presentation with explicit highlighted-feature labels and why-it-matters context. The spotlight flow now covers more actions including tutorial launcher, quick character creation, and attack generation, plus Escape-key dismissal."
+    },
     {
       "id": "ecs-2026-05-09-v1-0-25-spotlight-tutorial-pass",
       "date": "2026-05-09",

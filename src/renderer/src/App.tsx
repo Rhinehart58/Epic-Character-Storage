@@ -2582,31 +2582,68 @@ export default function App(): JSX.Element {
     if (updateStatus.phase === 'checking') setLastUpdateCheckAt(Date.now())
   }, [updateStatus.phase])
 
-  const tutorialSteps: ReadonlyArray<{ title: string; body: string; selector: string }> = [
+  const tutorialSteps: ReadonlyArray<{
+    title: string
+    body: string
+    selector: string
+    feature: string
+    why: string
+  }> = [
+    {
+      title: 'Tutorial launcher',
+      body: 'Use this button whenever you want a guided refresher.',
+      selector: '[data-tutorial="tutorial-button"]',
+      feature: 'Header tutorial button',
+      why: 'Keeps onboarding one click away for returning users.'
+    },
     {
       title: 'Workspace tabs',
       body: 'These tabs switch your primary workflow: Home for campaign setup, Sheet for editing, and Battle for encounter tracking.',
-      selector: '[data-tutorial="workspace-tabs"]'
+      selector: '[data-tutorial="workspace-tabs"]',
+      feature: 'Home / Sheet / Battle tabs',
+      why: 'Switching tabs quickly is the core navigation loop.'
     },
     {
       title: 'Campaign sidebar',
       body: 'This panel is your campaign command center. Create or join campaigns here, then manage shared context from one place.',
-      selector: '[data-tutorial="campaign-sidebar"]'
+      selector: '[data-tutorial="campaign-sidebar"]',
+      feature: 'Campaign and roster panel',
+      why: 'Campaign setup controls whether shared battle features are available.'
+    },
+    {
+      title: 'Quick character creator',
+      body: 'This opens the guided builder so you can create a ready-to-use character in a few steps.',
+      selector: '[data-tutorial="quick-create-button"]',
+      feature: 'New character shortcut',
+      why: 'Fast creation reduces setup friction for new users.'
+    },
+    {
+      title: 'Attack generation',
+      body: 'Generate attacks from keywords to quickly populate character abilities.',
+      selector: '[data-tutorial="attack-generator-button"]',
+      feature: 'Generate attacks action',
+      why: 'This is one of the highest-value productivity features in the app.'
     },
     {
       title: 'Rules mode toggle',
       body: 'Switch between TTRPG and DnD sheet behavior at any time without restarting.',
-      selector: '[data-tutorial="rules-toggle"]'
+      selector: '[data-tutorial="rules-toggle"]',
+      feature: 'TTRPG / DnD mode switch',
+      why: 'Lets tables adapt the same app to different play styles.'
     },
     {
       title: 'Theme controls',
       body: 'Open Theme to adjust color scheme, tone, layout style, and spacing presets.',
-      selector: '[data-tutorial="theme-button"]'
+      selector: '[data-tutorial="theme-button"]',
+      feature: 'Theme menu',
+      why: 'Personalizing readability and layout helps long-session comfort.'
     },
     {
       title: 'Settings and refresher',
       body: 'Open Settings for guidance options. You can rerun this tutorial anytime with the Tutorial button in this header.',
-      selector: '[data-tutorial="settings-button"]'
+      selector: '[data-tutorial="settings-button"]',
+      feature: 'Settings panel',
+      why: 'Keeps helper text, splash behavior, and workspace defaults in your control.'
     }
   ]
   const tutorialStepIndex = Math.max(0, Math.min(tutorialStep, tutorialSteps.length - 1))
@@ -2635,6 +2672,16 @@ export default function App(): JSX.Element {
       window.removeEventListener('scroll', updateTarget, true)
     }
   }, [isAuthed, tutorialOpen, tutorialStepRow.selector, workspaceTab, showThemeMenu, showSettingsMenu])
+
+  useEffect(() => {
+    if (!tutorialOpen) return
+    const onKeyDown = (event: KeyboardEvent): void => {
+      if (event.key !== 'Escape') return
+      setTutorialOpen(false)
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [tutorialOpen])
 
   useEffect(() => {
     if (updateStatus.phase !== 'installing') {
@@ -6946,6 +6993,7 @@ export default function App(): JSX.Element {
                       'ecs-ui-btn-primary inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-white transition duration-150 hover:brightness-110 active:brightness-95 motion-safe:active:scale-[0.98]',
                       scheme.primary
                     )}
+                    data-tutorial="quick-create-button"
                   >
                     <span aria-hidden className="text-sm leading-none">＋</span>
                     <span>{t('sidebar.newCharacter')}</span>
@@ -6996,6 +7044,7 @@ export default function App(): JSX.Element {
                   onClick={() => void generateAttacks()}
                   title="Build attacks from the character's keywords list"
                   className="ecs-interactive ecs-ui-btn ecs-ui-btn-quiet inline-flex items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-800/50"
+                  data-tutorial="attack-generator-button"
                 >
                   <span aria-hidden className="text-sm leading-none">⚡</span>
                   <span>Generate attacks</span>
@@ -8074,7 +8123,7 @@ export default function App(): JSX.Element {
               {tutorialTargetRect ? (
                 <div
                   aria-hidden
-                  className="pointer-events-none fixed z-[52001] rounded-xl border-2 border-sky-400 shadow-[0_0_0_9999px_rgba(2,6,23,0.58)] transition-all duration-200"
+                  className="pointer-events-none fixed z-[52001] rounded-xl border-2 border-sky-300 bg-sky-200/5 shadow-[0_0_0_9999px_rgba(2,6,23,0.62)] ring-2 ring-sky-400/65 transition-all duration-200"
                   style={{
                     top: Math.max(6, tutorialTargetRect.top - 8),
                     left: Math.max(6, tutorialTargetRect.left - 8),
@@ -8086,7 +8135,7 @@ export default function App(): JSX.Element {
               <div
                 role="dialog"
                 aria-label="Tactile tutorial"
-                className="fixed z-[52002] rounded-2xl border border-slate-300/80 bg-white/96 p-4 shadow-2xl backdrop-blur-sm dark:border-slate-700/80 dark:bg-slate-950/96"
+                className="fixed z-[52002] rounded-2xl border-2 border-sky-300/80 bg-white/[0.985] p-4 text-slate-900 shadow-2xl backdrop-blur-sm dark:border-sky-500/45 dark:bg-slate-950/[0.985] dark:text-slate-100"
                 style={(() => {
                   const viewportW = typeof window !== 'undefined' ? window.innerWidth : 1200
                   const viewportH = typeof window !== 'undefined' ? window.innerHeight : 800
@@ -8110,8 +8159,14 @@ export default function App(): JSX.Element {
                 <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500 dark:text-slate-400">
                   Tutorial • Step {tutorialStepIndex + 1} of {tutorialSteps.length}
                 </p>
-                <h3 className="mt-1 text-lg font-semibold text-slate-900 dark:text-slate-100">{tutorialStepRow.title}</h3>
-                <p className="mt-2 text-sm leading-relaxed text-slate-700 dark:text-slate-200">{tutorialStepRow.body}</p>
+                <h3 className="mt-1 text-xl font-bold leading-snug">{tutorialStepRow.title}</h3>
+                <p className="mt-2 rounded-lg border border-slate-200/90 bg-slate-50/90 px-3 py-2 text-sm leading-relaxed text-slate-800 dark:border-slate-700/90 dark:bg-slate-900/70 dark:text-slate-100">
+                  {tutorialStepRow.body}
+                </p>
+                <p className="mt-2 text-xs font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">
+                  Highlighted: {tutorialStepRow.feature}
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-slate-600 dark:text-slate-300">{tutorialStepRow.why}</p>
                 {!tutorialTargetRect ? (
                   <p className="mt-2 text-xs font-medium text-amber-700 dark:text-amber-300">
                     This feature is currently off-screen. Resize or scroll, then continue.
