@@ -23,9 +23,11 @@ echo "Downloading ${DMG_URL}"
 curl -fL "${DMG_URL}" -o "${DMG_PATH}"
 
 echo "Mounting DMG"
-MOUNT_POINT="$(hdiutil attach "${DMG_PATH}" -nobrowse -quiet | awk '/\/Volumes\// {print substr($0, index($0, "/Volumes/"))}' | tail -n1)"
+ATTACH_OUT="$(hdiutil attach "${DMG_PATH}" -nobrowse 2>&1)"
+MOUNT_POINT="$(printf '%s\n' "${ATTACH_OUT}" | awk '/\/Volumes\// {print substr($0, index($0, "/Volumes/"))}' | tail -n1)"
 if [[ -z "${MOUNT_POINT}" ]]; then
   echo "Could not mount DMG."
+  printf '%s\n' "${ATTACH_OUT}"
   exit 1
 fi
 
@@ -38,8 +40,11 @@ trap cleanup EXIT
 
 SRC_APP="${MOUNT_POINT}/${APP_NAME}"
 if [[ ! -d "${SRC_APP}" ]]; then
-  echo "Could not find ${APP_NAME} in mounted DMG."
-  exit 1
+  SRC_APP="$(ls -d "${MOUNT_POINT}"/*.app 2>/dev/null | head -n1 || true)"
+  if [[ -z "${SRC_APP}" ]]; then
+    echo "Could not find app bundle in mounted DMG."
+    exit 1
+  fi
 fi
 
 echo "Installing to /Applications/${APP_NAME}"
