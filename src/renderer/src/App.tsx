@@ -88,6 +88,7 @@ const PREF_REMEMBER_LOGIN = 'rememberLogin'
 const PREF_GUEST_APPEARANCE = 'guestAppearance'
 const UPDATE_PROMPT_DISMISSED_KEY = 'ecs_update_prompt_dismissed_v1'
 const LEGACY_INSTALL_PROMPT_DISMISSED_KEY = 'ecs_legacy_install_prompt_dismissed_v1'
+const TRUST_HELPER_DISMISSED_KEY = 'ecs_trust_helper_dismissed_v1'
 const STARTUP_SPLASH_DURATION_KEY = 'ecs_startup_splash_ms_v1'
 const UPDATE_CHECK_MS = 15 * 60 * 1000
 
@@ -2185,6 +2186,14 @@ export default function App(): JSX.Element {
   const [lastUpdateCheckAt, setLastUpdateCheckAt] = useState<number | null>(null)
   const [manualUpdateCheckPending, setManualUpdateCheckPending] = useState(false)
   const [manualUpdatePopup, setManualUpdatePopup] = useState<string | null>(null)
+  const [trustHelperDismissed, setTrustHelperDismissed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false
+    try {
+      return window.localStorage.getItem(TRUST_HELPER_DISMISSED_KEY) === '1'
+    } catch {
+      return false
+    }
+  })
   const [dismissedUpdateVersion, setDismissedUpdateVersion] = useState<string | null>(() => {
     if (typeof window === 'undefined') return null
     try {
@@ -2210,6 +2219,15 @@ export default function App(): JSX.Element {
     typeof backend.appApi.onUpdateStatus === 'function'
   const legacyInstallApiAvailable =
     typeof backend.appApi.getLegacyInstalls === 'function' && typeof backend.appApi.openPath === 'function'
+  const repairInstallApiAvailable = typeof backend.appApi.repairInstall === 'function'
+  const hostPlatform = useMemo<'mac' | 'windows' | 'linux' | 'other'>(() => {
+    if (typeof navigator === 'undefined') return 'other'
+    const ua = navigator.userAgent.toLowerCase()
+    if (ua.includes('mac')) return 'mac'
+    if (ua.includes('win')) return 'windows'
+    if (ua.includes('linux')) return 'linux'
+    return 'other'
+  }, [])
   const devUnlockTapCountRef = useRef(0)
   const [devPanelTab, setDevPanelTab] = useState<DevPanelTab>(() => {
     if (typeof window === 'undefined') return 'workbench'
@@ -2562,6 +2580,16 @@ export default function App(): JSX.Element {
       // ignore localStorage write issues
     }
   }, [dismissLegacyCleanupPrompt])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    try {
+      if (trustHelperDismissed) window.localStorage.setItem(TRUST_HELPER_DISMISSED_KEY, '1')
+      else window.localStorage.removeItem(TRUST_HELPER_DISMISSED_KEY)
+    } catch {
+      // ignore localStorage write issues
+    }
+  }, [trustHelperDismissed])
 
   useEffect(() => {
     if (!updaterApiAvailable) return
@@ -4746,6 +4774,21 @@ export default function App(): JSX.Element {
     }
     else if (result.ok) setAuthMessage('Checking for updates...')
   }, [updaterApiAvailable])
+  const handleRepairInstall = useCallback(async (): Promise<void> => {
+    if (!repairInstallApiAvailable) {
+      setAuthMessage('Repair install is unavailable in this mode.')
+      return
+    }
+    const result = await backend.appApi
+      .repairInstall()
+      .catch(() => ({ ok: false as const, message: 'Unable to start repair install.' }))
+    if (!result.ok) {
+      setAuthMessage(result.message ?? 'Unable to start repair install.')
+      setAppMessage(result.message ?? 'Unable to start repair install.')
+      return
+    }
+    setManualUpdatePopup('Repair install started. The app will close and relaunch.')
+  }, [repairInstallApiAvailable])
   const updatePrompt = shouldShowUpdatePrompt ? (
     <div className="pointer-events-auto fixed left-1/2 top-3 z-[130] flex w-[min(94vw,42rem)] -translate-x-1/2 items-start gap-3 rounded-xl border-2 border-emerald-300 bg-white/95 px-3 py-2.5 text-sm text-zinc-900 shadow-xl backdrop-blur-sm motion-safe:animate-ecs-pop-in dark:border-emerald-500/45 dark:bg-zinc-950/95 dark:text-zinc-50">
       <span aria-hidden className="mt-0.5 shrink-0 text-base leading-none text-emerald-600 dark:text-emerald-300">
@@ -4890,6 +4933,58 @@ export default function App(): JSX.Element {
       </button>
     </div>
   ) : null
+  const trustHelperTitle =
+    hostPlatform === 'mac'
+      ? 'macOS trust helper'
+      : hostPlatform === 'windows'
+        ? 'Windows trust helper'
+        : 'First-run trust helper'
+  const trustHelperBody =
+    hostPlatform === 'mac'
+      ? 'Unsigned apps may show as damaged. Use the install workaround script from Releases to install and clear quarantine.'
+      : hostPlatform === 'windows'
+        ? 'Unsigned builds can show unknown publisher prompts. Use signed builds when available and keep SmartScreen prompts expected for unsigned builds.'
+        : 'If your OS flags the app on first run, follow release notes trust steps before launching again.'
+  const trustHelperCommand =
+    hostPlatform === 'mac'
+      ? 'curl -fsSL "https://raw.githubusercontent.com/Rhinehart58/Epic-Character-Storage/main/scripts/install-macos-workaround.sh" | bash -s -- latest'
+      : null
+  const trustHelperPanel = !trustHelperDismissed ? (
+    <div className="fixed bottom-4 left-4 z-[140] w-[min(92vw,28rem)] rounded-lg border border-slate-300/70 bg-white/92 p-3 text-slate-800 shadow-xl backdrop-blur-sm dark:border-slate-700/70 dark:bg-slate-950/90 dark:text-slate-100">
+      <div className="flex items-start gap-2">
+        <span aria-hidden className="mt-0.5 text-sm text-sky-600 dark:text-sky-300">
+          ⓘ
+        </span>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">{trustHelperTitle}</p>
+          <p className="mt-1 text-xs leading-relaxed">{trustHelperBody}</p>
+          {trustHelperCommand ? (
+            <code className="mt-2 block overflow-x-auto rounded border border-slate-200/80 bg-slate-50 px-2 py-1 text-[10px] leading-relaxed text-slate-700 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200">
+              {trustHelperCommand}
+            </code>
+          ) : null}
+          {hostPlatform === 'mac' ? (
+            <button
+              type="button"
+              onClick={() => void handleRepairInstall()}
+              className="ecs-interactive mt-2 rounded border border-sky-300/80 bg-sky-500 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wide text-white hover:bg-sky-600 dark:border-sky-500/55 dark:bg-sky-600 dark:hover:bg-sky-500"
+              disabled={!repairInstallApiAvailable}
+            >
+              Repair/Reinstall app
+            </button>
+          ) : null}
+        </div>
+        <button
+          type="button"
+          onClick={() => setTrustHelperDismissed(true)}
+          className="ecs-interactive rounded border border-slate-300 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600 hover:bg-slate-100 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
+          aria-label="Dismiss trust helper"
+        >
+          ×
+        </button>
+      </div>
+    </div>
+  ) : null
 
   if (!isAuthed) {
     const authField = cn('ecs-ui-input w-full px-3 py-2', ecsWideControlRound(colorScheme), loginAuthFieldClass)
@@ -4907,6 +5002,7 @@ export default function App(): JSX.Element {
         {legacyInstallPrompt}
         {updateOverlay}
         {manualUpdatePopupBanner}
+        {trustHelperPanel}
         <div className="relative z-[1] px-4 py-6">
           <div className={cn('mx-auto w-full', loginShellMaxClass)}>
             {colorScheme === 'teal' ? (

@@ -84,6 +84,7 @@ You can publish downloadable installers directly on GitHub Releases.
    - Linux: `.AppImage` + `.deb`
 
 Downloads will appear in your repository's [Releases](https://github.com/Rhinehart58/Epic-Character-Storage/releases) page.
+Use `RELEASE_NOTES_TEMPLATE.md` as the standard notes/checklist for each version.
 
 ### macOS "app is damaged" permanent fix
 
@@ -98,7 +99,16 @@ To stop this for released builds, configure Apple signing + notarization secrets
 - `APPLE_API_ISSUER`
 
 The release workflow will automatically notarize macOS artifacts when these secrets are present.
-If they are missing, it falls back to an unsigned build and prints a warning in Actions.
+If they are missing, the macOS release job now fails intentionally so unsigned "damaged" builds are not shipped by mistake.
+
+Required repository secrets for signed/notarized macOS releases:
+
+- `CSC_LINK` (base64/file link to Developer ID Application `.p12`)
+- `CSC_KEY_PASSWORD`
+- `APPLE_ID`
+- `APPLE_APP_SPECIFIC_PASSWORD`
+- `APPLE_TEAM_ID`
+- Optional alternative auth: `APPLE_API_KEY`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`
 
 ### macOS no-paid-account workaround
 
@@ -115,6 +125,18 @@ curl -fsSL "https://raw.githubusercontent.com/Rhinehart58/Epic-Character-Storage
 ```
 
 This is a workaround only; notarized/signing distribution remains the recommended path.
+
+### Windows publisher / firewall warning reduction
+
+To show your publisher name and reduce SmartScreen/firewall trust prompts, sign Windows installers:
+
+- Buy an OV/EV code-signing certificate (EV gives fastest SmartScreen trust)
+- Add repo secrets:
+  - `WIN_CSC_LINK` (base64/file link to `.pfx` / `.p12`)
+  - `WIN_CSC_KEY_PASSWORD`
+- Release workflow will sign Windows installers automatically when these are present.
+
+Unsigned Windows builds still work but can show "Unknown publisher" warnings.
 
 ## Architecture notes
 

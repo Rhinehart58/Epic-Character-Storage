@@ -77,6 +77,7 @@ export function createRemoteBackendStub(_options: { baseUrl: string }): IAppBack
       updateCheck: async () => ({ ok: false, message: 'Auto-update is unavailable in remote backend mode.' }),
       updateDownload: async () => ({ ok: false, message: 'Auto-update is unavailable in remote backend mode.' }),
       updateInstall: async () => ({ ok: false, message: 'Auto-update is unavailable in remote backend mode.' }),
+      repairInstall: async () => ({ ok: false, message: 'Repair install is unavailable in remote backend mode.' }),
       getLegacyInstalls: async () => ({ paths: [] }),
       openPath: async () => ({ ok: false, message: 'openPath is unavailable in remote backend mode.' }),
       onUpdateStatus: () => () => {}

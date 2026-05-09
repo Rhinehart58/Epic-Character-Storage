@@ -93,6 +93,7 @@ declare global {
       updateCheck: () => Promise<{ ok: boolean; message?: string }>
       updateDownload: () => Promise<{ ok: boolean; message?: string }>
       updateInstall: () => Promise<{ ok: boolean; message?: string }>
+      repairInstall: () => Promise<{ ok: boolean; message?: string }>
       getLegacyInstalls: () => Promise<{ paths: string[] }>
       openPath: (path: string) => Promise<{ ok: boolean; message?: string }>
       onUpdateStatus: (callback: (payload: {

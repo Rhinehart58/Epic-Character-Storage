@@ -1,6 +1,24 @@
 {
-  "updatedAt": "2026-05-09T03:40:00.000Z",
+  "updatedAt": "2026-05-09T14:18:00.000Z",
   "entries": [
+    {
+      "id": "ecs-2026-05-09-one-click-repair-install-login-helper",
+      "date": "2026-05-09",
+      "title": "Added one-click Repair/Reinstall action in login trust helper",
+      "details": "macOS login trust helper now includes a Repair/Reinstall button that triggers an in-app detached installer flow (fetch latest DMG, replace app with `ditto`, clear quarantine, relaunch), so users can self-heal installs without running Terminal commands."
+    },
+    {
+      "id": "ecs-2026-05-09-first-run-trust-helper-and-release-notes-template",
+      "date": "2026-05-09",
+      "title": "Added first-run trust helper panel and release notes template",
+      "details": "Login route now shows a dismissible trust helper panel with platform-aware guidance (including a copy-ready macOS workaround command). Added `RELEASE_NOTES_TEMPLATE.md` and linked it in README so every release has consistent trust/update messaging and validation checks."
+    },
+    {
+      "id": "ecs-2026-05-08-release-version-gating-and-signing-readiness",
+      "date": "2026-05-08",
+      "title": "Added release version gate + signing readiness for mac and Windows",
+      "details": "Release workflow now fails if tag/version mismatch is detected (prevents vX.Y.Z shipping with wrong internal version). macOS release now requires signing/notarization secrets to avoid shipping damaged unsigned artifacts accidentally. Windows release flow now supports signing secrets (`WIN_CSC_LINK`, `WIN_CSC_KEY_PASSWORD`) to reduce unknown publisher warnings."
+    },
     {
       "id": "ecs-2026-05-08-macos-in-app-install-workaround-pipeline",
       "date": "2026-05-08",

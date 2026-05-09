@@ -67,16 +67,31 @@ function publishUpdateStatus(payload: UpdateStatusPayload): void {
   }
 }
 
-function createMacWorkaroundInstallScript(version: string): string {
-  const safeVersion = version.replace(/^v/i, '')
+function createMacWorkaroundInstallScript(versionOrLatest: string): string {
+  const requestedLatest = versionOrLatest === 'latest'
+  const safeVersion = versionOrLatest.replace(/^v/i, '')
   const tag = `v${safeVersion}`
-  const dmgUrl = `https://github.com/${RELEASE_REPO}/releases/download/${tag}/tactile-${safeVersion}.dmg`
+  const dmgUrl = requestedLatest
+    ? ''
+    : `https://github.com/${RELEASE_REPO}/releases/download/${tag}/tactile-${safeVersion}.dmg`
   const scriptPath = join(tmpdir(), `tactile-self-update-${Date.now()}.sh`)
   const script = `#!/usr/bin/env bash
 set -euo pipefail
 APP_PATH="/Applications/Tactile.app"
-DMG_PATH="${tmpdir()}/tactile-${safeVersion}.dmg"
-URL="${dmgUrl}"
+REPO="${RELEASE_REPO}"
+${requestedLatest ? 'VERSION="latest"' : `VERSION="${safeVersion}"`}
+
+if [[ "$VERSION" == "latest" ]]; then
+  TAG="$(curl -fsSL "https://api.github.com/repos/$REPO/releases/latest" | sed -n 's/.*"tag_name":[[:space:]]*"\\(v[^"]*\\)".*/\\1/p' | head -n1)"
+  [[ -n "$TAG" ]] || exit 1
+  VERSION_NO_V="\${TAG#v}"
+else
+  TAG="v$VERSION"
+  VERSION_NO_V="$VERSION"
+fi
+
+DMG_PATH="${tmpdir()}/tactile-\${VERSION_NO_V}.dmg"
+URL="${requestedLatest ? 'https://github.com/$REPO/releases/download/$TAG/tactile-$VERSION_NO_V.dmg' : dmgUrl}"
 
 while pgrep -x "Tactile" >/dev/null 2>&1; do
   sleep 1
@@ -104,6 +119,10 @@ function setupAutoUpdater(): void {
   autoUpdater.autoDownload = false
   // Avoid surprise restarts on Windows when users simply close the app.
   autoUpdater.autoInstallOnAppQuit = false
+  if (process.platform === 'win32') {
+    // Keep install explicit: do not auto-relaunch right after installer finishes.
+    ;(autoUpdater as unknown as { autoRunAppAfterInstall?: boolean }).autoRunAppAfterInstall = false
+  }
 
   autoUpdater.on('checking-for-update', () => {
     publishUpdateStatus({ phase: 'checking', message: 'Checking for updates...' })
@@ -349,10 +368,30 @@ ipcMain.handle('app:updateInstall', async () => {
       setTimeout(() => app.quit(), 150)
       return { ok: true as const }
     }
-    setTimeout(() => autoUpdater.quitAndInstall(false, true), 200)
+    setTimeout(() => autoUpdater.quitAndInstall(false, process.platform !== 'win32'), 200)
     return { ok: true as const }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to install update.'
+    publishUpdateStatus({ phase: 'error', message })
+    return { ok: false as const, message }
+  }
+})
+ipcMain.handle('app:repairInstall', async () => {
+  if (process.platform !== 'darwin') {
+    return { ok: false as const, message: 'Repair install is currently available on macOS only.' }
+  }
+  if (!app.isPackaged) {
+    return { ok: false as const, message: 'Repair install works in packaged builds only.' }
+  }
+  publishUpdateStatus({ phase: 'installing', message: 'Repairing install and restarting...' })
+  try {
+    const scriptPath = createMacWorkaroundInstallScript('latest')
+    const child = spawn('bash', [scriptPath], { detached: true, stdio: 'ignore' })
+    child.unref()
+    setTimeout(() => app.quit(), 150)
+    return { ok: true as const }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Failed to repair install.'
     publishUpdateStatus({ phase: 'error', message })
     return { ok: false as const, message }
   }
