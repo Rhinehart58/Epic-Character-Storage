@@ -326,6 +326,7 @@ export function LoginUpdateLog(props: { className?: string; colorScheme?: LogSch
   const [fetchStatus, setFetchStatus] = useState<'idle' | 'loading' | 'ok' | 'error'>('idle')
   const inFlightRef = useRef(false)
   const lastFetchAtRef = useRef<number>(0)
+  const payloadRef = useRef<UpdateLogPayload>(payload)
   const config = feedRaw as UpdateFeedConfig
   const remoteUrl = (import.meta.env.VITE_UPDATE_LOG_URL as string | undefined)?.trim() || githubRawUpdateLogUrl(config)
   const remoteUrlCandidates = useCallback((): string[] => {
@@ -347,7 +348,7 @@ export function LoginUpdateLog(props: { className?: string; colorScheme?: LogSch
     inFlightRef.current = true
     setFetchStatus('loading')
     try {
-      let next = payload
+      let next = payloadRef.current
       const urls = remoteUrlCandidates()
       if (urls.length > 0) {
         let gotRemote = false
@@ -370,6 +371,7 @@ export function LoginUpdateLog(props: { className?: string; colorScheme?: LogSch
         setFetchStatus('ok')
       }
       setPayload(next)
+      payloadRef.current = next
       try {
         window.localStorage.setItem(CACHE_KEY, JSON.stringify(next))
       } catch {
@@ -381,7 +383,7 @@ export function LoginUpdateLog(props: { className?: string; colorScheme?: LogSch
     } finally {
       inFlightRef.current = false
     }
-  }, [payload, remoteUrlCandidates])
+  }, [remoteUrlCandidates])
 
   /* eslint-disable react-hooks/set-state-in-effect -- startup fetch + interval hydration intentionally fan out into local state */
   useEffect(() => {

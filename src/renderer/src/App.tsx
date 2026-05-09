@@ -4824,11 +4824,14 @@ export default function App(): JSX.Element {
   ) : null
   const hasTopBanner = Boolean(updatePrompt || installPrompt || legacyInstallPrompt)
   const isCheckingUpdates = updateStatus.phase === 'checking'
+  const secondsSinceLastCheck = lastUpdateCheckAt ? Math.max(0, Math.round((Date.now() - lastUpdateCheckAt) / 1000)) : null
   const lastCheckedLabel = lastUpdateCheckAt
-    ? `Last checked ${new Date(lastUpdateCheckAt).toLocaleTimeString(undefined, {
-        hour: 'numeric',
-        minute: '2-digit'
-      })}`
+    ? secondsSinceLastCheck !== null && secondsSinceLastCheck < 45
+      ? 'Last checked just now'
+      : `Last checked ${new Date(lastUpdateCheckAt).toLocaleTimeString(undefined, {
+          hour: 'numeric',
+          minute: '2-digit'
+        })}`
     : 'Not checked yet'
 
   if (!isAuthed) {
@@ -5406,16 +5409,17 @@ export default function App(): JSX.Element {
             )}
           </div>
         </div>
-        <div className="fixed bottom-4 right-4 z-[140] flex flex-col items-end gap-1">
+        <div className="fixed bottom-4 right-4 z-[140] flex flex-col items-end gap-1.5 rounded-lg border border-slate-300/70 bg-white/85 p-2 shadow-xl backdrop-blur-sm dark:border-slate-700/70 dark:bg-slate-950/82">
           <button
             type="button"
             onClick={() => void handleManualUpdateCheck()}
             disabled={isCheckingUpdates}
-            className="ecs-interactive rounded-md border border-slate-300/85 bg-white/90 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-700 shadow-lg backdrop-blur-sm hover:bg-white disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-600 dark:bg-slate-900/85 dark:text-slate-200 dark:hover:bg-slate-900"
+            className="ecs-interactive inline-flex items-center gap-1.5 rounded-md border border-sky-300/80 bg-sky-500 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-white hover:bg-sky-600 disabled:cursor-not-allowed disabled:opacity-70 dark:border-sky-500/55 dark:bg-sky-600 dark:hover:bg-sky-500"
           >
+            <span aria-hidden>{isCheckingUpdates ? '↻' : '⟳'}</span>
             {isCheckingUpdates ? 'Checking updates...' : 'Check for updates'}
           </button>
-          <p className="rounded bg-white/80 px-2 py-0.5 text-[10px] text-slate-600 shadow dark:bg-slate-900/75 dark:text-slate-300">
+          <p className="px-1 text-[10px] text-slate-600 dark:text-slate-300">
             {lastCheckedLabel}
           </p>
         </div>

@@ -1,6 +1,12 @@
 {
-  "updatedAt": "2026-05-09T00:45:00.000Z",
+  "updatedAt": "2026-05-09T01:50:00.000Z",
   "entries": [
+    {
+      "id": "ecs-2026-05-08-update-log-loop-and-login-check-polish",
+      "date": "2026-05-08",
+      "title": "Fixed update-log refresh loop and polished login update controls",
+      "details": "Resolved an aggressive refresh loop in the login update log by stabilizing refresh callback dependencies and tracking payload in a ref. Login update controls were restyled into a cleaner floating panel with an icon, better visual hierarchy, and friendlier last-check copy (including 'Last checked just now')."
+    },
     {
       "id": "ecs-2026-05-08-v1-0-11-macos-notarize-and-login-last-checked",
       "date": "2026-05-08",
