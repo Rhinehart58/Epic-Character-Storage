@@ -1,6 +1,12 @@
 {
-  "updatedAt": "2026-05-09T14:37:35Z",
+  "updatedAt": "2026-05-09T15:06:49Z",
   "entries": [
+    {
+      "id": "ecs-2026-05-09-v1-0-21-release-retry",
+      "date": "2026-05-09",
+      "title": "v1.0.21: release retry with aligned package/tag version",
+      "details": "Release retried with package version aligned to tag and latest updater/install reliability fixes included."
+    },
     {
       "id": "ecs-2026-05-09-v1-0-20-release-recovery",
       "date": "2026-05-09",
