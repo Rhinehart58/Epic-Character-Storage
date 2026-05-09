@@ -44,7 +44,7 @@ fi
 
 echo "Installing to /Applications/${APP_NAME}"
 rm -rf "/Applications/${APP_NAME}"
-cp -R "${SRC_APP}" "/Applications/"
+ditto "${SRC_APP}" "/Applications/${APP_NAME}"
 
 echo "Removing quarantine attribute"
 xattr -dr com.apple.quarantine "/Applications/${APP_NAME}" || true
