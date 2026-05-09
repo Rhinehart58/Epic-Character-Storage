@@ -85,6 +85,21 @@ You can publish downloadable installers directly on GitHub Releases.
 
 Downloads will appear in your repository's [Releases](https://github.com/Rhinehart58/Epic-Character-Storage/releases) page.
 
+### macOS "app is damaged" permanent fix
+
+Unsigned macOS builds can be blocked by Gatekeeper and shown as "damaged."  
+To stop this for released builds, configure Apple signing + notarization secrets in GitHub:
+
+- `APPLE_ID`
+- `APPLE_APP_SPECIFIC_PASSWORD`
+- `APPLE_TEAM_ID`
+- `APPLE_API_KEY`
+- `APPLE_API_KEY_ID`
+- `APPLE_API_ISSUER`
+
+The release workflow will automatically notarize macOS artifacts when these secrets are present.
+If they are missing, it falls back to an unsigned build and prints a warning in Actions.
+
 ## Architecture notes
 
 - `src/shared/character-types.ts`: core app domain model.
