@@ -1,6 +1,12 @@
 {
-  "updatedAt": "2026-05-09T16:40:00.000Z",
+  "updatedAt": "2026-05-09T19:08:00.000Z",
   "entries": [
+    {
+      "id": "ecs-2026-05-09-v1-0-23-readme-security-and-install-guidance",
+      "date": "2026-05-09",
+      "title": "v1.0.23: safer README guidance and clearer macOS recovery steps",
+      "details": "Hardened README security guidance by removing public dev-credential references and added a clearer end-user macOS damaged-app recovery sequence (in-app repair, script fallback, and manual quarantine removal)."
+    },
     {
       "id": "ecs-2026-05-09-v1-0-22-login-updater-and-install-helper-polish",
       "date": "2026-05-09",
