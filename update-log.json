@@ -1,6 +1,12 @@
 {
-  "updatedAt": "2026-05-09T15:35:00.000Z",
+  "updatedAt": "2026-05-09T16:40:00.000Z",
   "entries": [
+    {
+      "id": "ecs-2026-05-09-v1-0-22-login-updater-and-install-helper-polish",
+      "date": "2026-05-09",
+      "title": "v1.0.22: login updater + install helper polish pass",
+      "details": "Added login-screen install helper actions (copy workaround command, open latest release), dev-only install diagnostics copy, quieter background update checks with update-available indicator, and improved fallback paths when updater checks fail."
+    },
     {
       "id": "ecs-2026-05-09-macos-workaround-mount-detection-fix",
       "date": "2026-05-09",
